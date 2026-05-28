@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { addBill, getCustomers, getProducts } from '../services/api';
+import { addBill, getCustomers, getProducts, updateProduct } from '../services/api';
 
 /* ─────────────────────────────── helpers ──────────────────────────────── */
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free'];
@@ -214,7 +214,7 @@ export default function Billing() {
 
   const selectProduct = useCallback((uid, prod) => {
     setRows(p => p.map(r => r._uid === uid
-      ? { ...r, name: prod.name, category: prod.category || '', size: prod.size || 'M', rate: prod.price || '' }
+      ? { ...r, name: prod.name, category: prod.category || '', size: prod.size || 'M', rate: prod.price || '', _productId: prod.id }
       : r
     ));
   }, []);
@@ -241,7 +241,7 @@ export default function Billing() {
     grandTotal,
   });
 
-  /* ── save to DB ── */
+  /* ── save to DB + deduct stock ── */
   const saveToDB = async (inv) => {
     try {
       await addBill({
@@ -256,6 +256,21 @@ export default function Billing() {
         date: inv.date,
         lineItems: inv.lineItems,
       });
+
+      // Deduct stock for each line item that has a known product
+      const validRows = rows.filter(r => r._productId && r.name && Number(r.qty) > 0);
+      const currentProducts = await getProducts();
+      const prodMap = {};
+      (currentProducts.data || []).forEach(p => { prodMap[p.id] = p; });
+
+      await Promise.all(
+        validRows.map(row => {
+          const prod = prodMap[row._productId];
+          if (!prod) return null;
+          const newStock = Math.max(0, Number(prod.stock ?? prod.available ?? 0) - Number(row.qty));
+          return updateProduct(prod.id, { ...prod, stock: newStock });
+        }).filter(Boolean)
+      );
     } catch (e) { console.error(e); }
   };
 

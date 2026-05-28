@@ -7,6 +7,10 @@ export const api = axios.create({
 });
 
 export const getProducts = () => api.get('/products');
+export const addProduct = (product) => api.post('/products', product);
+export const updateProduct = (id, product) => api.put(`/products/${id}`, product);
+export const deleteProduct = (id) => api.delete(`/products/${id}`);
+
 export const getCustomers = () => api.get('/customers');
 export const addCustomer = (customer) => api.post('/customers', customer);
 export const updateCustomer = (id, customer) => api.put(`/customers/${id}`, customer);
@@ -22,6 +26,7 @@ export const getUsers = () => api.get('/users');
 export const getReturns = () => api.get('/returns');
 export const addReturn = (req) => api.post('/returns', req);
 export const updateReturn = (id, req) => api.put(`/returns/${id}`, req);
+export const deleteReturn = (id) => api.delete(`/returns/${id}`);
 
 // Mock login API since json-server doesn't do real auth
 export const login = async (email, password) => {
@@ -31,3 +36,4 @@ export const login = async (email, password) => {
   }
   throw new Error('Invalid credentials');
 };
+

@@ -469,6 +469,26 @@
           "qty": 1
         }
       ]
+    },
+    {
+      "id": "INV-2026-6912",
+      "customer": "Walk-in Customer",
+      "phone": "",
+      "amount": 1250,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash",
+      "date": "28 May 2026, 09:41 pm",
+      "lineItems": [
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        }
+      ]
     }
   ],
   "dashboardStats": {

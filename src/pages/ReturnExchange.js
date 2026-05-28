@@ -1,129 +1,154 @@
-import React, { useState, useEffect } from 'react';
-import { getReturns, addReturn, updateReturn } from '../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getReturns, addReturn, updateReturn, getBills, getProducts, updateProduct } from '../services/api';
 
 export default function ReturnExchange() {
-  const [requests, setRequests] = useState([]);
+  const [requests,    setRequests]    = useState([]);
+  const [bills,       setBills]       = useState([]);
+  const [products,    setProducts]    = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All statuses');
-  const [typeFilter, setTypeFilter] = useState('All types');
-  const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [statusFilter,setStatusFilter]= useState('All statuses');
+  const [typeFilter,  setTypeFilter]  = useState('All types');
+  const [selectedId,  setSelectedId]  = useState(null);
+  const [processing,  setProcessing]  = useState(false);
 
-  const [newRequest, setNewRequest] = useState({ invoice: '', customer: '', item: '', type: 'Return', qty: 1, reason: 'Size issue', notes: '', status: 'Pending' });
+  const emptyReq = { invoice: '', customer: '', item: '', type: 'Return', qty: 1, reason: 'Size issue', notes: '', status: 'Pending' };
+  const [newReq, setNewReq] = useState(emptyReq);
 
+  /* ── Selected invoice's items ── */
+  const selectedBill = useMemo(() => bills.find(b => b.id === newReq.invoice), [bills, newReq.invoice]);
+  const billItems = selectedBill?.lineItems?.filter(li => li.name && li.name.trim()) || [];
+
+  /* ── Load data ── */
+  const loadAll = async () => {
+    try {
+      const [retRes, billRes, prodRes] = await Promise.all([getReturns(), getBills(), getProducts()]);
+      setRequests(retRes.data);
+      setBills([...billRes.data].reverse());
+      setProducts(prodRes.data);
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  /* ── When invoice changes, auto-fill customer ── */
   useEffect(() => {
-    loadReturns();
-  }, []);
-
-  const loadReturns = async () => {
-    try {
-      const res = await getReturns();
-      setRequests(res.data);
-    } catch (e) {
-      console.error(e);
+    if (selectedBill) {
+      setNewReq(p => ({ ...p, customer: selectedBill.customer || '', item: '' }));
     }
-  };
+  }, [newReq.invoice]);
 
-  const handleAddRequest = async () => {
-    if (!newRequest.invoice || !newRequest.item) return;
-    try {
-      await addReturn(newRequest);
-      loadReturns();
-      setNewRequest({ invoice: '', customer: '', item: '', type: 'Return', qty: 1, reason: 'Size issue', notes: '', status: 'Pending' });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleCompleteSelected = async () => {
-    if (!selectedRequestId) return;
-    const req = requests.find(r => r.id === selectedRequestId);
-    if (!req) return;
-    try {
-      await updateReturn(selectedRequestId, { ...req, status: 'Completed' });
-      setSelectedRequestId(null);
-      loadReturns();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
+  /* ── Filtered list ── */
   const filteredRequests = requests.filter(r => {
-    const matchesSearch = r.invoice.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          r.item.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'All statuses' || r.status === statusFilter;
-    const matchesType = typeFilter === 'All types' || r.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
+    const matchSearch = (r.invoice || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (r.item    || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (r.customer|| '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchStatus = statusFilter === 'All statuses' || r.status === statusFilter;
+    const matchType   = typeFilter   === 'All types'    || r.type   === typeFilter;
+    return matchSearch && matchStatus && matchType;
   });
+
+  /* ── Stats ── */
+  const stats = useMemo(() => ({
+    total:     requests.length,
+    pending:   requests.filter(r => r.status === 'Pending').length,
+    exchanges: requests.filter(r => r.type === 'Exchange').length,
+  }), [requests]);
+
+  /* ── Create request ── */
+  const handleAddRequest = async () => {
+    if (!newReq.invoice || !newReq.item) return;
+    try {
+      await addReturn(newReq);
+      setNewReq(emptyReq);
+      await loadAll();
+    } catch (e) { console.error(e); }
+  };
+
+  /* ── Complete selected + restore stock for Returns ── */
+  const handleComplete = async () => {
+    if (!selectedId) return;
+    const req = requests.find(r => r.id === selectedId);
+    if (!req) return;
+    setProcessing(true);
+    try {
+      await updateReturn(selectedId, { ...req, status: 'Completed' });
+
+      /* Restore stock only for Returns (not Exchange — exchanged items come back as different item) */
+      if (req.type === 'Return' && req.item) {
+        // Find the product by name
+        const prod = products.find(p => p.name.toLowerCase() === (req.item || '').toLowerCase());
+        if (prod) {
+          const restoredStock = Number(prod.stock ?? prod.available ?? 0) + Number(req.qty || 1);
+          await updateProduct(prod.id, { ...prod, stock: restoredStock });
+        }
+      }
+
+      setSelectedId(null);
+      await loadAll();
+    } catch (e) { alert('Operation failed'); }
+    setProcessing(false);
+  };
+
+  const handleReset = async () => {
+    setSearchQuery(''); setStatusFilter('All statuses'); setTypeFilter('All types'); setSelectedId(null);
+  };
+
+  /* ── Bill dropdown options ── */
+  const billOptions = bills.filter(b => b.lineItems && b.lineItems.some(li => li.name && li.name.trim()));
 
   return (
     <div className="space-y-6">
-      {/* Header Area matching screenshot */}
-      <div className="flex justify-between items-center bg-white border-b border-gray-50 pb-4 mb-4">
+      {/* Header */}
+      <div className="flex justify-between items-center pb-4 border-b border-gray-100">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Returns & Exchange</h1>
-          <p className="text-xs text-gray-400">Process refunds, exchanges, and customer claims quickly.</p>
+          <h1 className="text-xl font-bold text-gray-800">Returns &amp; Exchange</h1>
+          <p className="text-xs text-gray-400 mt-1">Process refunds, exchanges, and customer claims quickly.</p>
         </div>
       </div>
 
-      {/* Top Stats */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-center">
-          <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">Total Requests</p>
-          <p className="text-3xl font-bold text-gray-800 mb-1">3</p>
-          <div className="mt-2"><span className="bg-orange-50 text-orange-600 text-[10px] font-bold px-3 py-1 rounded-full">Open cases</span></div>
-        </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-center">
-          <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">Refund Value</p>
-          <p className="text-3xl font-bold text-gray-800 mb-1">₹1,870</p>
-          <div className="mt-2"><span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-3 py-1 rounded-full border border-gray-200">Processed amount</span></div>
-        </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-center">
-          <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">Exchanges</p>
-          <p className="text-3xl font-bold text-gray-800 mb-1">1</p>
-          <div className="mt-2"><span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-3 py-1 rounded-full border border-gray-200">Items swapped</span></div>
-        </div>
+        {[
+          { label: 'Total Requests', value: stats.total,     badge: 'All cases',     badgeClass: 'bg-purple-50 text-purple-600' },
+          { label: 'Pending',        value: stats.pending,   badge: 'Open cases',    badgeClass: 'bg-orange-50 text-orange-600' },
+          { label: 'Exchanges',      value: stats.exchanges, badge: 'Items swapped', badgeClass: 'bg-blue-50 text-blue-600' },
+        ].map((s, i) => (
+          <div key={i} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">{s.label}</p>
+            <p className="text-3xl font-bold text-gray-800 mb-2">{s.value}</p>
+            <span className={`${s.badgeClass} text-[10px] font-bold px-3 py-1 rounded-full`}>{s.badge}</span>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Request Log */}
+        {/* ── Left: Request Log ── */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-50 flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-gray-800">Request Log</h2>
-                <p className="text-xs text-gray-400 mt-1">Search by invoice, item or status.</p>
+                <p className="text-xs text-gray-400 mt-1">Search by invoice, customer or item.</p>
               </div>
-              <button className="bg-[#b56e8d] hover:bg-[#a0607b] text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors">
-                Reset
-              </button>
+              <button onClick={handleReset} className="bg-[#b56e8d] hover:bg-[#a0607b] text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors">Reset</button>
             </div>
 
             <div className="p-6">
               <div className="flex items-center gap-4 mb-6">
                 <div className="flex-[1.5] bg-[#f9f8f9] rounded-xl flex items-center px-4 py-2.5">
                   <input
-                    type="text"
-                    placeholder="Search requests"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    type="text" placeholder="Search requests…"
+                    value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                     className="bg-transparent text-sm w-full outline-none text-gray-600 placeholder:text-gray-400"
                   />
                 </div>
-                <select 
-                  className="flex-1 bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
+                <select className="flex-1 bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                   <option>All statuses</option>
                   <option>Pending</option>
                   <option>Approved</option>
                   <option>Completed</option>
                 </select>
-                <select 
-                  className="flex-1 bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                >
+                <select className="flex-1 bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
                   <option>All types</option>
                   <option>Return</option>
                   <option>Exchange</option>
@@ -132,42 +157,46 @@ export default function ReturnExchange() {
 
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-[10px] text-gray-400 uppercase font-bold tracking-wider border-b border-gray-50">
+                  <thead className="text-[10px] text-gray-400 uppercase font-bold tracking-wider border-b border-gray-100">
                     <tr>
-                      <th className="pb-3 font-medium px-2">INVOICE</th>
-                      <th className="pb-3 font-medium px-2">ITEM</th>
-                      <th className="pb-3 font-medium px-2 text-center">TYPE</th>
-                      <th className="pb-3 font-medium px-2 text-center">STATUS</th>
-                      <th className="pb-3 font-medium px-2 text-right">ACTION</th>
+                      <th className="pb-3 px-2">Invoice</th>
+                      <th className="pb-3 px-2">Customer</th>
+                      <th className="pb-3 px-2">Item</th>
+                      <th className="pb-3 px-2 text-center">Type</th>
+                      <th className="pb-3 px-2 text-center">Status</th>
+                      <th className="pb-3 px-2 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredRequests.map(req => (
+                    {filteredRequests.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-10 text-gray-300 text-sm">No requests found.</td></tr>
+                    ) : filteredRequests.map(req => (
                       <tr key={req.id}>
-                        <td className="py-4 px-2 text-gray-800 font-semibold">{req.invoice}</td>
+                        <td className="py-4 px-2 text-gray-800 font-semibold font-mono text-xs">{req.invoice}</td>
+                        <td className="py-4 px-2 text-gray-600 text-xs">{req.customer || '—'}</td>
                         <td className="py-4 px-2 text-gray-600">{req.item}</td>
                         <td className="py-4 px-2 text-center">
-                          <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${
-                            req.type === 'Return' ? 'bg-pink-50 text-pink-600' : 'bg-blue-50 text-blue-600'
-                          }`}>
+                          <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${req.type === 'Return' ? 'bg-pink-50 text-pink-600' : 'bg-blue-50 text-blue-600'}`}>
                             {req.type}
                           </span>
                         </td>
                         <td className="py-4 px-2 text-center">
                           <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${
-                            req.status === 'Pending' ? 'bg-orange-50 text-orange-600' :
-                            req.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' :
-                            'bg-purple-50 text-purple-600'
-                          }`}>
-                            {req.status}
-                          </span>
+                            req.status === 'Pending'   ? 'bg-orange-50 text-orange-600' :
+                            req.status === 'Approved'  ? 'bg-emerald-50 text-emerald-600' :
+                                                         'bg-purple-50 text-purple-600'
+                          }`}>{req.status}</span>
                         </td>
                         <td className="py-4 px-2 text-right">
-                          <button 
-                            onClick={() => setSelectedRequestId(req.id)}
-                            className={`text-[10px] font-bold px-4 py-1.5 rounded-full transition-colors border ${selectedRequestId === req.id ? 'bg-pink-100 text-pink-600 border-pink-200' : 'text-gray-600 bg-gray-100 hover:bg-gray-200 border-gray-200'}`}
+                          <button
+                            onClick={() => setSelectedId(req.id)}
+                            className={`text-[10px] font-bold px-4 py-1.5 rounded-full transition-colors border ${
+                              selectedId === req.id
+                                ? 'bg-pink-100 text-pink-600 border-pink-200'
+                                : 'text-gray-600 bg-gray-100 hover:bg-gray-200 border-gray-200'
+                            }`}
                           >
-                            {selectedRequestId === req.id ? 'Selected' : 'Select'}
+                            {selectedId === req.id ? 'Selected ✓' : 'Select'}
                           </button>
                         </td>
                       </tr>
@@ -177,70 +206,100 @@ export default function ReturnExchange() {
               </div>
             </div>
           </div>
-          
-          {/* Details & Notes section */}
+
+          {/* Details & Complete */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex justify-between items-center p-6">
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Details & Notes</h2>
-              <p className="text-xs text-gray-400 mt-1">Review selected request and update the status.</p>
+              <h2 className="text-lg font-bold text-gray-800">Details &amp; Notes</h2>
+              {selectedId ? (() => {
+                const r = requests.find(x => x.id === selectedId);
+                return r ? (
+                  <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+                    <p><strong>Invoice:</strong> {r.invoice} &nbsp;|&nbsp; <strong>Customer:</strong> {r.customer || '—'}</p>
+                    <p><strong>Item:</strong> {r.item} &nbsp;|&nbsp; <strong>Qty:</strong> {r.qty} &nbsp;|&nbsp; <strong>Reason:</strong> {r.reason}</p>
+                    {r.notes && <p><strong>Notes:</strong> {r.notes}</p>}
+                    {r.type === 'Return' && <p className="text-emerald-600 font-semibold mt-1">✓ Stock will be restored on completion</p>}
+                  </div>
+                ) : null;
+              })() : (
+                <p className="text-xs text-gray-400 mt-1">Select a request from the list above.</p>
+              )}
             </div>
-            <button 
-              onClick={handleCompleteSelected}
-              className={`text-white text-xs font-bold px-6 py-3 rounded-xl transition-colors ${selectedRequestId ? 'bg-[#69b870] hover:bg-[#56a55d]' : 'bg-gray-300 cursor-not-allowed'}`}
-              disabled={!selectedRequestId}
+            <button
+              onClick={handleComplete}
+              disabled={!selectedId || processing}
+              className={`text-white text-xs font-bold px-6 py-3 rounded-xl transition-colors whitespace-nowrap ${selectedId && !processing ? 'bg-[#69b870] hover:bg-[#56a55d]' : 'bg-gray-300 cursor-not-allowed'}`}
             >
-              Complete Selected
+              {processing ? 'Processing…' : 'Complete Selected'}
             </button>
           </div>
         </div>
 
-        {/* Right: New Request */}
+        {/* ── Right: New Request ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 h-fit">
           <div className="p-6 border-b border-gray-50">
             <h2 className="text-lg font-bold text-gray-800">New Request</h2>
-            <p className="text-xs text-gray-400 mt-1">Create a return or exchange request.</p>
+            <p className="text-xs text-gray-400 mt-1">Pick an invoice to auto-fill details.</p>
           </div>
           <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Invoice Number</label>
-                <input 
-                  type="text"
-                  placeholder="INV-2024..."
-                  value={newRequest.invoice}
-                  onChange={e => setNewRequest({...newRequest, invoice: e.target.value})}
-                  className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Customer Name</label>
-                <input 
-                  type="text"
-                  placeholder="Priya Gupta"
-                  value={newRequest.customer}
-                  onChange={e => setNewRequest({...newRequest, customer: e.target.value})}
-                  className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
-                />
-              </div>
+
+            {/* Invoice Dropdown */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Invoice Number</label>
+              <select
+                value={newReq.invoice}
+                onChange={e => setNewReq(p => ({ ...p, invoice: e.target.value, item: '' }))}
+                className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300 appearance-none"
+              >
+                <option value="">-- Select Invoice --</option>
+                {billOptions.map(b => (
+                  <option key={b.id} value={b.id}>{b.id} — {b.customer}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Customer (auto-filled, editable) */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Customer Name</label>
+              <input
+                type="text" placeholder="Auto-filled from invoice"
+                value={newReq.customer}
+                onChange={e => setNewReq(p => ({ ...p, customer: e.target.value }))}
+                className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* Item dropdown from bill items */}
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Item</label>
-                <input 
-                  type="text"
-                  placeholder="Floral Kurti"
-                  value={newRequest.item}
-                  onChange={e => setNewRequest({...newRequest, item: e.target.value})}
-                  className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
-                />
+                {billItems.length > 0 ? (
+                  <select
+                    value={newReq.item}
+                    onChange={e => setNewReq(p => ({ ...p, item: e.target.value }))}
+                    className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none border border-gray-100 appearance-none"
+                  >
+                    <option value="">-- Pick item --</option>
+                    {billItems.map((li, i) => (
+                      <option key={i} value={li.name}>{li.name} (x{li.qty})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text" placeholder="Item name"
+                    value={newReq.item}
+                    onChange={e => setNewReq(p => ({ ...p, item: e.target.value }))}
+                    className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
+                  />
+                )}
               </div>
+              {/* Type */}
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Request Type</label>
-                <select 
+                <select
+                  value={newReq.type}
+                  onChange={e => setNewReq(p => ({ ...p, type: e.target.value }))}
                   className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none border border-gray-100 appearance-none"
-                  value={newRequest.type}
-                  onChange={e => setNewRequest({...newRequest, type: e.target.value})}
                 >
                   <option>Return</option>
                   <option>Exchange</option>
@@ -251,51 +310,52 @@ export default function ReturnExchange() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Quantity</label>
-                <input 
-                  type="number"
-                  placeholder="1"
-                  value={newRequest.qty}
-                  onChange={e => setNewRequest({...newRequest, qty: Number(e.target.value)})}
+                <input
+                  type="number" min="1" placeholder="1"
+                  value={newReq.qty}
+                  onChange={e => setNewReq(p => ({ ...p, qty: Number(e.target.value) }))}
                   className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
                 />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Reason</label>
-                <select 
+                <select
+                  value={newReq.reason}
+                  onChange={e => setNewReq(p => ({ ...p, reason: e.target.value }))}
                   className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none border border-gray-100 appearance-none"
-                  value={newRequest.reason}
-                  onChange={e => setNewRequest({...newRequest, reason: e.target.value})}
                 >
                   <option>Size issue</option>
                   <option>Defective</option>
                   <option>Wrong item</option>
+                  <option>Color mismatch</option>
+                  <option>Customer changed mind</option>
                 </select>
               </div>
             </div>
 
             <div>
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Notes</label>
-              <textarea 
-                placeholder="Additional details..."
-                rows={4}
-                value={newRequest.notes}
-                onChange={e => setNewRequest({...newRequest, notes: e.target.value})}
+              <textarea
+                rows={3} placeholder="Additional details…"
+                value={newReq.notes}
+                onChange={e => setNewReq(p => ({ ...p, notes: e.target.value }))}
                 className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none border border-gray-100 resize-none"
-              ></textarea>
+              />
             </div>
-            
-            <div className="flex items-center gap-3 pt-2">
-              <button 
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
                 onClick={handleAddRequest}
-                className="bg-[#b56e8d] hover:bg-[#a0607b] text-white text-xs font-bold px-6 py-3 rounded-xl transition-colors"
+                disabled={!newReq.invoice || !newReq.item}
+                className={`text-white text-xs font-bold px-6 py-3 rounded-xl transition-colors ${newReq.invoice && newReq.item ? 'bg-[#b56e8d] hover:bg-[#a0607b]' : 'bg-gray-300 cursor-not-allowed'}`}
               >
                 Create Request
               </button>
-              <button 
-                onClick={() => setNewRequest({ invoice: 'INV-SAMPLE', customer: 'Sample Name', item: 'Sample Item', type: 'Return', qty: 1, reason: 'Size issue', notes: 'Sample note', status: 'Pending' })}
+              <button
+                onClick={() => setNewReq(emptyReq)}
                 className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs font-bold px-6 py-3 rounded-xl transition-colors"
               >
-                Sample Request
+                Clear
               </button>
             </div>
           </div>
