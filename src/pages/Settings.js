@@ -5,7 +5,6 @@ import {
   Phone,
   Mail,
   FileText,
-  Upload,
   Save,
   Percent,
   Plus,

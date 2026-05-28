@@ -1,13 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { addBill, getCustomers } from '../services/api';
 import {
-  Search,
-  ShoppingCart,
   Receipt,
-  X,
   Plus,
-  Minus,
-  MessageCircle
+  Minus
 } from 'lucide-react';
 
 const productCatalog = [

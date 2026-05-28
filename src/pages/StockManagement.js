@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ChevronDown,
   X,
-  Filter,
   Download,
   ArrowUpDown
 } from 'lucide-react';

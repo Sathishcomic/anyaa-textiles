@@ -6,9 +6,7 @@ import {
   TrendingUp,
   IndianRupee,
   Package,
-  BarChart3,
-  PieChart,
-  Filter
+  BarChart3
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,

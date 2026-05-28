@@ -10,10 +10,8 @@ import {
   RotateCcw,
   Settings,
   Menu,
-  X,
   Bell,
   Search,
-  ChevronDown,
   LogOut,
   Receipt
 } from 'lucide-react';
