@@ -1,0 +1,255 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "admin@anyaa.com",
+      "password": "admin",
+      "name": "Admin User",
+      "role": "Admin"
+    },
+    {
+      "id": 2,
+      "email": "sales@anyaa.com",
+      "password": "sales",
+      "name": "Sales User",
+      "role": "Sales"
+    },
+    {
+      "id": 3,
+      "email": "accounts@anyaa.com",
+      "password": "accounts",
+      "name": "Accounts User",
+      "role": "Accounts"
+    }
+  ],
+  "returns": [
+    {
+      "id": 1,
+      "invoice": "INV-1045",
+      "item": "Elegant Saree",
+      "type": "Return",
+      "status": "Pending"
+    },
+    {
+      "id": 2,
+      "invoice": "INV-1048",
+      "item": "Printed Leggings",
+      "type": "Exchange",
+      "status": "Approved"
+    },
+    {
+      "id": 3,
+      "invoice": "INV-1051",
+      "item": "Chiffon Top",
+      "type": "Return",
+      "status": "Completed"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "sku": "KU-104",
+      "name": "Pink Floral Kurti",
+      "category": "Kurti",
+      "price": 1250,
+      "stock": 2,
+      "minStock": 5,
+      "unit": "pieces",
+      "taxRate": 5
+    },
+    {
+      "id": 2,
+      "sku": "SA-212",
+      "name": "Silk Saree - Navy Blue",
+      "category": "Saree",
+      "price": 4500,
+      "stock": 1,
+      "minStock": 3,
+      "unit": "pieces",
+      "taxRate": 12
+    },
+    {
+      "id": 3,
+      "sku": "LG-045",
+      "name": "Cotton Leggings - XL",
+      "category": "Leggings",
+      "price": 450,
+      "stock": 4,
+      "minStock": 10,
+      "unit": "pieces",
+      "taxRate": 5
+    }
+  ],
+  "customers": [
+    {
+      "id": 1,
+      "name": "Priya S.",
+      "phone": "9876543210",
+      "email": "priya@example.com",
+      "totalPurchases": 12450,
+      "due": 0
+    },
+    {
+      "id": 2,
+      "name": "Meena R.",
+      "phone": "9876543211",
+      "email": "meena@example.com",
+      "totalPurchases": 850,
+      "due": 0
+    },
+    {
+      "name": "Phoenix ",
+      "phone": "85522666",
+      "email": "phoen@gmail.com",
+      "segment": "Vip",
+      "status": "Active",
+      "id": 3
+    }
+  ],
+  "bills": [
+    {
+      "id": "INV-2024-0842",
+      "customer": "Vikram Singh",
+      "amount": 2100,
+      "items": 1,
+      "time": "3 hours ago",
+      "status": "refunded",
+      "payment": "CASH"
+    },
+    {
+      "id": "INV-2024-0843",
+      "customer": "Fatima Begum",
+      "amount": 7800,
+      "items": 4,
+      "time": "2 hours ago",
+      "status": "completed",
+      "payment": "UPI"
+    },
+    {
+      "id": "INV-2024-0844",
+      "customer": "Anand Textiles",
+      "amount": 45600,
+      "items": 15,
+      "time": "1 hour ago",
+      "status": "completed",
+      "payment": "CASH"
+    },
+    {
+      "id": "INV-2024-0845",
+      "customer": "Meera Patel",
+      "amount": 3200,
+      "items": 2,
+      "time": "32 min ago",
+      "status": "pending",
+      "payment": "UPI"
+    },
+    {
+      "id": "INV-2024-0846",
+      "customer": "Rajesh Kumar",
+      "amount": 12850,
+      "items": 7,
+      "time": "15 min ago",
+      "status": "completed",
+      "payment": "CASH"
+    },
+    {
+      "id": "INV-2024-0847",
+      "customer": "Priya Sharma",
+      "amount": 4520,
+      "items": 3,
+      "time": "2 min ago",
+      "status": "completed",
+      "payment": "UPI"
+    },
+    {
+      "id": "INV-2026-4225",
+      "customer": "Walk-in Customer",
+      "amount": 1539,
+      "items": 2,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-1674",
+      "customer": "Walk-in Customer",
+      "amount": 4652,
+      "items": 3,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-2520",
+      "customer": "Walk-in Customer",
+      "amount": 1386,
+      "items": 6,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Card"
+    },
+    {
+      "id": "INV-2026-9083",
+      "customer": "Walk-in Customer",
+      "amount": 389,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-3919",
+      "customer": "Phoenix ",
+      "amount": 1098,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    }
+  ],
+  "dashboardStats": {
+    "todaySales": 12450,
+    "todaySalesGrowth": 18,
+    "totalBills": 38,
+    "totalBillsGrowth": 5,
+    "cashSales": 7800,
+    "cashSalesGrowth": 12,
+    "upiSales": 4650,
+    "upiSalesGrowth": 28,
+    "stockItems": 284,
+    "lowStockAlerts": 3,
+    "weeklySales": [
+      {
+        "name": "Mon",
+        "sales": 12400
+      },
+      {
+        "name": "Tue",
+        "sales": 18200
+      },
+      {
+        "name": "Wed",
+        "sales": 15600
+      },
+      {
+        "name": "Thu",
+        "sales": 22300
+      },
+      {
+        "name": "Fri",
+        "sales": 28100
+      },
+      {
+        "name": "Sat",
+        "sales": 35200
+      },
+      {
+        "name": "Sun",
+        "sales": 19800
+      }
+    ],
+    "weekTotal": 68200,
+    "lastWeekTotal": 54900,
+    "growth": 24
+  }
+}
