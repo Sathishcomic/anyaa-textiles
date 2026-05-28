@@ -13,6 +13,8 @@ export const updateCustomer = (id, customer) => api.put(`/customers/${id}`, cust
 
 export const getBills = () => api.get('/bills');
 export const addBill = (bill) => api.post('/bills', bill);
+export const updateBill = (id, bill) => api.put(`/bills/${id}`, bill);
+export const deleteBill = (id) => api.delete(`/bills/${id}`);
 
 export const getDashboardStats = () => api.get('/dashboardStats');
 export const getUsers = () => api.get('/users');

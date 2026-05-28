@@ -1,369 +1,691 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { addBill, getCustomers } from '../services/api';
-import {
-  Receipt,
-  Plus,
-  Minus
-} from 'lucide-react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { addBill, getCustomers, getProducts } from '../services/api';
 
-const productCatalog = [
-  { id: 1, name: 'Rose Garden Kurti', sku: 'KU-101 Kurti', price: 650, tax: 5, category: 'Kurti', stock: 25 },
-  { id: 2, name: 'Silk Saree - Maroon', sku: 'SA-207 Saree', price: 2780, tax: 12, category: 'Saree', stock: 40 },
-  { id: 3, name: 'Stretch Leggings', sku: 'LG-053 Leggings', price: 220, tax: 5, category: 'Leggings', stock: 150 },
-  { id: 4, name: 'Chiffon Top', sku: 'TO-089 Tops', price: 420, tax: 5, category: 'Tops', stock: 80 },
-  { id: 5, name: 'Daywear Nighty', sku: 'NY-025 Nighty', price: 380, tax: 5, category: 'Nighty', stock: 100 },
-  { id: 6, name: 'Silk Chudithar Set', sku: 'CH-063 Chudithar', price: 980, tax: 12, category: 'Chudithar', stock: 35 },
-  { id: 7, name: 'Embroidered Kurti', sku: 'KU-114 Kurti', price: 720, tax: 5, category: 'Kurti', stock: 60 },
-  { id: 8, name: 'Mysore Cotton Saree', sku: 'SA-110 Saree', price: 1450, tax: 12, category: 'Saree', stock: 45 },
-  { id: 9, name: 'Printed Leggings', sku: 'LG-086 Leggings', price: 260, tax: 5, category: 'Leggings', stock: 120 },
-  { id: 10, name: 'Mesh Top', sku: 'TO-004 Tops', price: 360, tax: 5, category: 'Tops', stock: 55 },
-];
+/* ─────────────────────────────── helpers ──────────────────────────────── */
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free'];
+const CATS  = ['Kurti','Saree','Leggings','Tops','Nighty','Chudithar','Other'];
+const LS    = 'anyaa_billing_draft';
 
-export default function Billing() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const [cart, setCart] = useState([]);
-  const [discountPercent, setDiscountPercent] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [customers, setCustomers] = useState([]);
-  const [selectedCustomer, setSelectedCustomer] = useState('Walk-in Customer');
-  const [invoiceId, setInvoiceId] = useState(`INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
+function genInv() {
+  return `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+function now() {
+  return new Date().toLocaleString('en-IN', { 
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  });
+}
+
+/* Read / write draft to localStorage */
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch { return null; }
+}
+function saveDraft(data) {
+  try { localStorage.setItem(LS, JSON.stringify(data)); } catch {}
+}
+function clearDraft() {
+  try { localStorage.removeItem(LS); } catch {}
+}
+
+/* ─────────────────────── Product Search Cell ───────────────────────────── */
+function ProductSearchCell({ value, products, onSelect, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+
+  const filtered = useMemo(() =>
+    products.filter(p =>
+      p.name.toLowerCase().includes(value.toLowerCase()) ||
+      (p.sku || '').toLowerCase().includes(value.toLowerCase())
+    ).slice(0, 8),
+  [products, value]);
 
   useEffect(() => {
-    getCustomers().then(res => setCustomers(res.data)).catch(console.error);
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const filteredProducts = useMemo(() => {
-    return productCatalog.filter(product => {
-      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'All Categories' || product.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [searchQuery, selectedCategory]);
-
-  const addToCart = useCallback((product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-  }, []);
-
-  const updateQuantity = useCallback((id, delta) => {
-    setCart(prev => {
-      return prev.map(item => {
-        if (item.id === id) {
-          const newQty = item.quantity + delta;
-          return { ...item, quantity: newQty };
-        }
-        return item;
-      }).filter(item => item.quantity > 0);
-    });
-  }, []);
-
-  const updateItemDiscount = useCallback((id, discount) => {
-    setCart(prev => prev.map(item => item.id === id ? { ...item, itemDiscount: Number(discount) } : item));
-  }, []);
-
-  const cartCalculations = useMemo(() => {
-    const subtotal = cart.reduce((sum, item) => sum + ((item.price - (item.itemDiscount || 0)) * item.quantity), 0);
-    const taxTotal = cart.reduce((sum, item) => sum + ((((item.price - (item.itemDiscount || 0)) * item.quantity) * item.tax) / 100), 0);
-    const globalDiscountAmount = discountPercent ? (subtotal * (Number(discountPercent) / 100)) : 0;
-    
-    let grandTotalRaw = (subtotal - globalDiscountAmount) + taxTotal;
-    let roundOff = Math.round(grandTotalRaw) - grandTotalRaw;
-    let grandTotal = Math.round(grandTotalRaw);
-
-    return { subtotal, taxTotal, discountAmount: globalDiscountAmount, roundOff, grandTotal };
-  }, [cart, discountPercent]);
-
-  const handleCheckout = async (type) => {
-    if (cart.length === 0) return;
-    
-    const billData = {
-      id: invoiceId,
-      customer: selectedCustomer,
-      amount: cartCalculations.grandTotal,
-      items: cart.reduce((sum, i) => sum + i.quantity, 0),
-      time: "Just now",
-      status: "completed",
-      payment: paymentMethod
-    };
-
-    try {
-      await addBill(billData);
-    } catch (e) {
-      console.error(e);
-    }
-
-    if (type === 'print') {
-      window.print();
-    } else if (type === 'whatsapp') {
-      const msg = `Hello! Your bill from Anyaa Textiles is ₹${cartCalculations.grandTotal.toLocaleString('en-IN')}. Thank you for shopping!`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-    }
-
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
-      setCart([]);
-      setDiscountPercent('');
-      setInvoiceId(`INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
-      setSelectedCustomer('Walk-in Customer');
-    }, 2000);
-  };
 
   return (
-    <div className="h-[calc(100vh-80px)] flex gap-6 pb-6">
-      {/* Left Column: Product Catalog */}
-      <div className="flex-[1.5] bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-        <div className="p-6 pb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">Product Catalog</h2>
-            <p className="text-xs text-gray-400 mt-1">Select products, scan codes or add custom items.</p>
-          </div>
-          <button className="text-[10px] font-bold text-pink-500 bg-pink-50 px-3 py-1.5 rounded-full uppercase tracking-wider">
-            Drag to cart
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="px-6 flex items-center gap-4 mb-6">
-          <div className="flex-1 bg-[#f9f8f9] rounded-xl flex items-center px-4 py-2.5">
-            <input
-              type="text"
-              placeholder="Search by name or code"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent text-sm w-full outline-none text-gray-600 placeholder:text-gray-400"
-            />
-          </div>
-          <select 
-            className="flex-[0.8] bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-          >
-            <option>All Categories</option>
-            <option>Kurti</option>
-            <option>Saree</option>
-            <option>Leggings</option>
-            <option>Tops</option>
-            <option>Nighty</option>
-            <option>Chudithar</option>
-          </select>
-          <select className="flex-[0.8] bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-600 outline-none appearance-none">
-            <option>Any Price</option>
-            <option>Under ₹500</option>
-            <option>₹500 - ₹1000</option>
-            <option>Above ₹1000</option>
-          </select>
-        </div>
-
-        {/* Product Grid */}
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
-          <div className="grid grid-cols-2 gap-4">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="border border-pink-100 rounded-2xl p-4 flex flex-col hover:shadow-md transition-shadow">
-                <h3 className="text-sm font-semibold text-gray-800 mb-1">{product.name}</h3>
-                <p className="text-[10px] text-gray-400 font-mono mb-2">{product.sku}</p>
-                <p className="text-sm font-bold text-gray-800 mb-3 flex-1">₹{product.price.toLocaleString('en-IN')}</p>
-                
-                <div className="flex items-center justify-between">
-                  <button 
-                    onClick={() => addToCart(product)}
-                    className="bg-[#cfa1bb] hover:bg-[#b5809e] text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors"
-                  >
-                    Add
-                  </button>
-                  <span className="text-[10px] text-gray-400">{product.category}</span>
-                </div>
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        className="tbl-input"
+        value={value}
+        placeholder="Search product…"
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="prod-drop">
+          {filtered.map(p => (
+            <div
+              key={p.id}
+              className="prod-drop-item"
+              onMouseDown={() => { onSelect(p); setOpen(false); }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <span className="drop-name">{p.name}</span>
+                {p.sku && <span style={{ fontSize: 10, color: '#b090a8', fontFamily: 'monospace' }}>SKU: {p.sku}</span>}
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Column: Current Bill */}
-      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-        <div className="p-6 pb-4 border-b border-gray-50 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Current Bill</h2>
-              <p className="text-xs text-gray-400 mt-1">Drag items to reorder. Click qty to update.</p>
+              <span className="drop-meta">{p.category} · ₹{(p.price || 0).toLocaleString('en-IN')}</span>
             </div>
-            <button className="text-[10px] font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-full border border-pink-100 uppercase tracking-wider">
-              {invoiceId}
-            </button>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Select Customer</label>
-            <select 
-              className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300 appearance-none"
-              value={selectedCustomer}
-              onChange={(e) => setSelectedCustomer(e.target.value)}
-            >
-              <option value="Walk-in Customer">Walk-in Customer</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.name}>{c.name} ({c.phone})</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Headers */}
-        <div className="px-6 py-3 border-b border-gray-50 grid grid-cols-12 gap-2 text-[10px] font-bold text-gray-400 tracking-wider">
-          <div className="col-span-5 uppercase">Item</div>
-          <div className="col-span-3 text-center uppercase">Qty</div>
-          <div className="col-span-2 text-right uppercase">Rate</div>
-          <div className="col-span-2 text-right uppercase">Total</div>
-        </div>
-
-        {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-300">
-              <div className="w-12 h-12 rounded-full border-4 border-gray-100 mb-4 flex items-center justify-center">
-                <div className="w-4 h-4 bg-gray-100 rounded-full"></div>
-              </div>
-              <p className="text-sm font-medium">No items added yet. Tap a product to start billing.</p>
-            </div>
-          ) : (
-            cart.map((item) => (
-              <div key={item.id} className="grid grid-cols-12 gap-3 items-center bg-[#f9f8f9] p-3 rounded-xl border border-gray-100">
-                <div className="col-span-5">
-                  <p className="text-sm font-bold text-gray-800 line-clamp-1">{item.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-[10px] text-gray-400 font-mono">{item.sku}</p>
-                    <input
-                      type="number"
-                      placeholder="₹ Disc"
-                      value={item.itemDiscount || ''}
-                      onChange={(e) => updateItemDiscount(item.id, e.target.value)}
-                      className="w-16 h-5 text-[10px] px-1 border border-gray-200 rounded"
-                    />
-                  </div>
-                </div>
-                <div className="col-span-3 flex items-center justify-center gap-2 bg-white rounded-lg border border-gray-200 py-1 px-2">
-                  <button onClick={() => updateQuantity(item.id, -1)} className="text-gray-400 hover:text-gray-600">
-                    <Minus className="w-3 h-3" />
-                  </button>
-                  <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
-                  <button onClick={() => updateQuantity(item.id, 1)} className="text-gray-400 hover:text-gray-600">
-                    <Plus className="w-3 h-3" />
-                  </button>
-                </div>
-                <div className="col-span-2 text-right text-gray-600 flex flex-col justify-center">
-                  <span className="text-xs">{(item.price - (item.itemDiscount || 0))}</span>
-                  {item.itemDiscount > 0 && <span className="text-[9px] line-through text-gray-400">{item.price}</span>}
-                </div>
-                <div className="col-span-2 text-right font-semibold text-gray-800">
-                  {(item.price - (item.itemDiscount || 0)) * item.quantity}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Calculation Area */}
-        <div className="p-6 border-t border-gray-50 space-y-2">
-          <div className="flex justify-between text-xs font-medium text-gray-500">
-            <span>Subtotal</span>
-            <span>₹{cartCalculations.subtotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-          </div>
-          <div className="flex justify-between text-xs font-medium text-gray-500">
-            <span>Discount</span>
-            <span>₹{cartCalculations.discountAmount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-          </div>
-          <div className="flex justify-between text-xs font-medium text-gray-500">
-            <span>GST (5%)</span>
-            <span>₹{cartCalculations.taxTotal.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-          </div>
-          <div className="flex justify-between text-xs font-medium text-gray-500 pb-2">
-            <span>Round Off</span>
-            <span>₹{cartCalculations.roundOff.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-          </div>
-
-          <div className="bg-[#f9f8f9] rounded-xl p-4 flex justify-between items-center mb-4">
-            <span className="text-sm font-bold text-gray-800">Total Payable</span>
-            <span className="text-xl font-bold text-gray-800">₹{cartCalculations.grandTotal.toLocaleString('en-IN')}</span>
-          </div>
-
-          <div className="mb-4">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Discount (%)</label>
-            <input 
-              type="number"
-              value={discountPercent}
-              onChange={(e) => setDiscountPercent(e.target.value)}
-              className="w-full bg-[#f9f8f9] rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none border border-gray-100 focus:border-pink-300"
-              placeholder="0"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <button 
-              onClick={() => setPaymentMethod('Cash')}
-              className={`py-2 text-xs font-bold rounded-xl border transition-colors ${paymentMethod === 'Cash' ? 'border-pink-300 text-pink-600 bg-pink-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-            >
-              Cash
-            </button>
-            <button 
-              onClick={() => setPaymentMethod('UPI')}
-              className={`py-2 text-xs font-bold rounded-xl border transition-colors ${paymentMethod === 'UPI' ? 'border-pink-300 text-pink-600 bg-pink-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-            >
-              UPI
-            </button>
-            <button 
-              onClick={() => setPaymentMethod('Card')}
-              className={`py-2 text-xs font-bold rounded-xl border transition-colors ${paymentMethod === 'Card' ? 'border-pink-300 text-pink-600 bg-pink-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-            >
-              Card
-            </button>
-          </div>
-
-          <p className="text-[10px] text-gray-400 mb-4">Tip: Keep item quantities updated and press Generate Receipt after checkout.</p>
-
-          <div className="grid grid-cols-3 gap-3">
-            <button 
-              onClick={() => setCart([])}
-              className="py-3 bg-[#f9f8f9] hover:bg-gray-100 text-gray-600 text-xs font-bold rounded-xl transition-colors border border-gray-100"
-            >
-              Clear Cart
-            </button>
-            <button 
-              onClick={() => handleCheckout('print')}
-              className="py-3 bg-[#6e85c2] hover:bg-[#5a71ad] text-white text-xs font-bold rounded-xl transition-colors"
-            >
-              Print Bill
-            </button>
-            <button 
-              onClick={() => handleCheckout('whatsapp')}
-              className="py-3 bg-[#69b870] hover:bg-[#56a55d] text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
-            >
-              WhatsApp Receipt
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {showSuccess && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
-          <div className="bg-white p-8 rounded-3xl text-center max-w-sm w-full mx-4 animate-slide-up shadow-2xl">
-            <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Receipt className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">Bill Generated!</h3>
-            <p className="text-gray-500 text-sm mb-6">Receipt ready for {paymentMethod} payment.</p>
-          </div>
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+/* ──────────────────────────── Invoice Preview ───────────────────────────── */
+export function InvoiceView({ inv }) {
+  const { invoiceId, date, customer, phone, lineItems = [], paymentMethod, grandTotal } = inv;
+  const subtotal = (lineItems || []).reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0);
+
+  return (
+    <div id="printable-invoice" style={{ fontFamily: "'Georgia', serif", color: '#1a1a1a', padding: '28px 32px' }}>
+      {/* Header */}
+      <div style={{ textAlign: 'center', borderBottom: '3px double #c07a9c', paddingBottom: 14, marginBottom: 14 }}>
+        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 3, color: '#8b3a6a', textTransform: 'uppercase' }}>
+          🌸 Anyaa Textiles
+        </div>
+        <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+          Premium Fashion &amp; Ethnic Wear &nbsp;|&nbsp; Tailored for You
+        </div>
+        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+          Contact: +91 98765 43210 &nbsp;|&nbsp; anyaatextiles@gmail.com
+        </div>
+      </div>
+
+      {/* Meta */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#8b3a6a', marginBottom: 4 }}>INVOICE</div>
+          <div><strong>No:</strong> {invoiceId}</div>
+          <div><strong>Date:</strong> {date}</div>
+          <div><strong>Payment:</strong> {paymentMethod}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#8b3a6a', marginBottom: 4 }}>BILL TO</div>
+          <div style={{ fontWeight: 600 }}>{customer}</div>
+          {phone && <div>📞 {phone}</div>}
+        </div>
+      </div>
+
+      {/* Items */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 14 }}>
+        <thead>
+          <tr style={{ background: '#8b3a6a', color: '#fff' }}>
+            {['#','Product','Category','Size','Qty','Rate (₹)','Total (₹)'].map((h, i) => (
+              <th key={h} style={{ padding: '7px 10px', textAlign: i >= 4 ? 'right' : i === 2 || i === 3 ? 'center' : 'left' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(lineItems || []).map((item, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#fdf6fa' : '#fff', borderBottom: '1px solid #f0d8e8' }}>
+              <td style={{ padding: '7px 10px' }}>{i + 1}</td>
+              <td style={{ padding: '7px 10px', fontWeight: 600 }}>{item.name}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.category}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.size}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right' }}>{item.qty}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right' }}>{Number(item.rate).toLocaleString('en-IN')}</td>
+              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>
+                {(item.qty * Number(item.rate)).toLocaleString('en-IN')}
+              </td>
+            </tr>
+          ))}
+          {(!lineItems || lineItems.length === 0) && (
+            <tr><td colSpan={7} style={{ padding: '14px', textAlign: 'center', color: '#bbb' }}>No line items</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Totals */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
+        <table style={{ fontSize: 12, minWidth: 220 }}>
+          <tbody>
+            <tr>
+              <td style={{ padding: '4px 10px', color: '#555' }}>Subtotal</td>
+              <td style={{ padding: '4px 10px', textAlign: 'right' }}>₹{subtotal.toLocaleString('en-IN')}</td>
+            </tr>
+            <tr style={{ borderTop: '2px solid #8b3a6a' }}>
+              <td style={{ padding: '8px 10px', fontWeight: 800, fontSize: 14, color: '#8b3a6a' }}>GRAND TOTAL</td>
+              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#8b3a6a' }}>
+                ₹{Number(grandTotal || subtotal).toLocaleString('en-IN')}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div style={{ textAlign: 'center', borderTop: '2px dashed #c07a9c', paddingTop: 10, fontSize: 11, color: '#888' }}>
+        <div style={{ fontWeight: 700, color: '#8b3a6a', marginBottom: 3 }}>Thank you for shopping with us! 🌸</div>
+        <div>Goods once sold will not be returned. Exchange within 3 days with bill.</div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────── Main Billing ──────────────────────────────── */
+export default function Billing() {
+  // Initialise from persisted draft so state survives tab switches
+  const draft = loadDraft() || {};
+
+  const [invoiceId, setInvoiceId]     = useState(draft.invoiceId   || genInv());
+  const [autoInv,   setAutoInv]       = useState(draft.autoInv     ?? true);
+  const [customers, setCustomers]     = useState([]);
+  const [products,  setProducts]      = useState([]);
+  const [custMode,  setCustMode]      = useState(draft.custMode     || 'walkin');
+  const [selCustId, setSelCustId]     = useState(draft.selCustId    || '');
+  const [custName,  setCustName]      = useState(draft.custName     || 'Walk-in Customer');
+  const [custPhone, setCustPhone]     = useState(draft.custPhone    || '');
+  const [rows,      setRows]          = useState(draft.rows         || []);
+  const [payment,   setPayment]       = useState(draft.payment      || 'Cash');
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    getCustomers().then(r => setCustomers(r.data)).catch(() => {});
+    getProducts().then(r => setProducts(r.data)).catch(() => {});
+  }, []);
+
+  /* auto-save draft to localStorage on every billing state change */
+  useEffect(() => {
+    saveDraft({ invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment });
+  }, [invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment]);
+
+  /* customer mode sync */
+  useEffect(() => {
+    if (custMode === 'walkin') { setCustName('Walk-in Customer'); setCustPhone(''); }
+    else if (custMode === 'existing' && selCustId) {
+      const c = customers.find(c => String(c.id) === String(selCustId));
+      if (c) { setCustName(c.name); setCustPhone(c.phone || ''); }
+    }
+  }, [custMode, selCustId, customers]);
+
+  /* ── row helpers ── */
+  const addBlankRow = () => setRows(p => [...p, { _uid: Date.now(), name: '', category: '', size: 'M', rate: '', qty: 1 }]);
+
+  const updateRow = useCallback((uid, field, val) => {
+    setRows(p => p.map(r => r._uid === uid ? { ...r, [field]: val } : r));
+  }, []);
+
+  const selectProduct = useCallback((uid, prod) => {
+    setRows(p => p.map(r => r._uid === uid
+      ? { ...r, name: prod.name, category: prod.category || '', size: prod.size || 'M', rate: prod.price || '' }
+      : r
+    ));
+  }, []);
+
+  const removeRow = useCallback((uid) => setRows(p => p.filter(r => r._uid !== uid)), []);
+
+  /* ── totals ── */
+  const hasValidItem = rows.some(r => r.name && r.name.trim() !== '');
+  
+  const grandTotal = useMemo(() =>
+    Math.round(rows.reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0)),
+  [rows]);
+
+  const totalQty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+
+  /* ── build invoice object ── */
+  const buildInvoice = () => ({
+    invoiceId,
+    date: now(),
+    customer: custName || 'Walk-in Customer',
+    phone: custPhone,
+    lineItems: rows.map(({ _uid, ...rest }) => rest),
+    paymentMethod: payment,
+    grandTotal,
+  });
+
+  /* ── save to DB ── */
+  const saveToDB = async (inv) => {
+    try {
+      await addBill({
+        id: inv.invoiceId,
+        customer: inv.customer,
+        phone: inv.phone,
+        amount: inv.grandTotal,
+        items: totalQty,
+        time: 'Just now',
+        status: 'completed',
+        payment: inv.paymentMethod,
+        date: inv.date,
+        lineItems: inv.lineItems,
+      });
+    } catch (e) { console.error(e); }
+  };
+
+  /* ── handlers ── */
+  const handleGenerate = () => { if (hasValidItem) setShowInvoice(true); };
+
+  const handleWhatsApp = async () => {
+    const inv = buildInvoice();
+    await saveToDB(inv);
+    const lines = inv.lineItems.map(it =>
+      `• ${it.name} (${it.category} | ${it.size}) x${it.qty} @ ₹${Number(it.rate).toLocaleString('en-IN')} = ₹${(it.qty * Number(it.rate)).toLocaleString('en-IN')}`
+    ).join('\n');
+    const msg = `🌸 *Anyaa Textiles* 🌸\nInvoice: *${inv.invoiceId}*\nDate: ${inv.date}\nCustomer: ${inv.customer}\n\n*Items:*\n${lines}\n\n*Total: ₹${inv.grandTotal.toLocaleString('en-IN')}*\nPayment: ${inv.paymentMethod}\n\nThank you for shopping! 💐`;
+    const ph = custPhone.replace(/\D/g, '');
+    window.open(ph ? `https://wa.me/91${ph}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    finalize();
+  };
+
+  const handlePrint = async () => {
+    await saveToDB(buildInvoice());
+    window.print();
+    finalize();
+  };
+
+  const finalize = () => {
+    clearDraft(); // wipe persisted draft
+    setShowInvoice(false);
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      setRows([]);
+      setCustMode('walkin');
+      setCustPhone('');
+      setInvoiceId(genInv());
+    }, 2000);
+  };
+
+  /* ─────────────────────────────── JSX ───────────────────────────────────── */
+  return (
+    <>
+      <style>{`
+        /* ── Page ── */
+        .billing-wrap {
+          display: flex; flex-direction: column; gap: 0;
+          height: calc(100vh - 88px);
+        }
+
+        /* ── Top card ── */
+        .bill-card {
+          background: #fff; border-radius: 18px;
+          border: 1px solid #f0e0ec; box-shadow: 0 2px 16px rgba(139,58,106,.07);
+          display: flex; flex-direction: column; overflow: hidden; flex: 1;
+        }
+
+        /* ── Invoice header bar ── */
+        .bill-header {
+          padding: 16px 24px 14px; border-bottom: 1px solid #f5edf3;
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .bill-title { font-size: 16px; font-weight: 800; color: #4a1942; margin: 0; }
+        .inv-id-area { display: flex; align-items: center; gap: 8px; }
+        .inv-badge {
+          background: #fdf0f8; border: 1px solid #e8b4d4; color: #8b3a6a;
+          font-size: 11px; font-weight: 700; padding: 5px 14px; border-radius: 20px;
+          font-family: monospace; letter-spacing: .5px;
+        }
+        .inv-edit-inp {
+          border: 1px solid #c07a9c; border-radius: 8px; padding: 5px 10px;
+          font-size: 11px; font-family: monospace; width: 145px; outline: none;
+          background: #fdf6fa; color: #4a1942;
+        }
+        .icon-btn {
+          background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px 4px;
+          transition: .15s; border-radius: 6px;
+        }
+        .icon-btn:hover { background: #f5edf3; }
+
+        /* ── Customer section ── */
+        .cust-section {
+          padding: 14px 24px; border-bottom: 1px solid #f5edf3;
+          display: flex; flex-direction: column; gap: 10px;
+        }
+        .cust-tabs { display: flex; gap: 6px; }
+        .cust-tab {
+          padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 700;
+          border: 1px solid #e8d4e4; cursor: pointer; background: #fff; color: #8b3a6a;
+          transition: .15s;
+        }
+        .cust-tab.active { background: #8b3a6a; color: #fff; border-color: #8b3a6a; }
+        .cust-fields { display: flex; gap: 10px; align-items: center; }
+        .cust-inp, .cust-sel {
+          flex: 1; border: 1px solid #e8d4e4; border-radius: 10px;
+          padding: 8px 12px; font-size: 12px; outline: none; background: #fdf6fa; color: #333;
+          font-family: inherit;
+        }
+        .cust-inp:focus, .cust-sel:focus { border-color: #c07a9c; background: #fff; }
+        .wa-badge {
+          display: inline-flex; align-items: center; gap: 5px;
+          background: #e8f9ef; border: 1px solid #a8d8b4; color: #1a7a3a;
+          font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 20px;
+          text-decoration: none; white-space: nowrap;
+        }
+
+        /* ── Items table ── */
+        .items-wrap { flex: 1; overflow-y: auto; padding: 12px 24px; }
+        .bill-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .bill-table thead tr { background: #f7eef5; }
+        .bill-table th {
+          padding: 9px 8px; text-align: left; font-size: 10px; font-weight: 700;
+          color: #8b3a6a; text-transform: uppercase; letter-spacing: .5px;
+          border-bottom: 2px solid #e8d4e4;
+        }
+        .bill-table td { padding: 5px 4px; border-bottom: 1px solid #f8f0f6; vertical-align: middle; }
+        .bill-table .row-num { font-size: 11px; color: #bbb; text-align: center; width: 28px; }
+        .bill-table .row-total { font-weight: 700; color: #4a1942; text-align: right; font-size: 13px; }
+        .tbl-input, .tbl-select {
+          width: 100%; border: 1px solid #eedce8; border-radius: 7px;
+          padding: 5px 8px; font-size: 12px; outline: none; background: #fdf6fa;
+          color: #333; font-family: inherit; transition: .12s;
+        }
+        .tbl-input:focus, .tbl-select:focus { border-color: #c07a9c; background: #fff; }
+        .tbl-input[type=number] { text-align: right; }
+        .rm-btn {
+          width: 24px; height: 24px; border-radius: 50%; background: #ffe4ef;
+          border: none; color: #c04070; cursor: pointer; font-size: 15px; line-height: 1;
+          display: flex; align-items: center; justify-content: center; transition: .15s;
+          flex-shrink: 0;
+        }
+        .rm-btn:hover { background: #ffb8d0; }
+
+        /* Product search dropdown */
+        .prod-drop {
+          position: absolute; top: calc(100% + 3px); left: 0; right: 0;
+          background: #fff; border: 1px solid #e0cce0; border-radius: 10px;
+          box-shadow: 0 6px 24px rgba(139,58,106,.18); z-index: 200;
+          max-height: 220px; overflow-y: auto;
+        }
+        .prod-drop-item {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 8px 12px; cursor: pointer; transition: .12s; gap: 8px;
+        }
+        .prod-drop-item:hover { background: #fdf0f8; }
+        .drop-name { font-size: 12px; font-weight: 600; color: #3a1a34; }
+        .drop-meta { font-size: 10px; color: #a07090; white-space: nowrap; }
+        .add-row-btn {
+          margin-top: 10px; padding: 7px 18px; border: 1.5px dashed #c07a9c;
+          border-radius: 10px; background: #fff; color: #8b3a6a; font-size: 12px;
+          font-weight: 600; cursor: pointer; transition: .15s;
+        }
+        .add-row-btn:hover { background: #fdf0f8; }
+
+        /* ── Bottom bar ── */
+        .bill-bottom {
+          padding: 14px 24px; border-top: 1.5px solid #f0e0ec;
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          flex-wrap: wrap;
+        }
+        .total-area { display: flex; flex-direction: column; }
+        .total-label { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+        .grand-total { font-size: 26px; font-weight: 800; color: #8b3a6a; line-height: 1; }
+        .total-meta { font-size: 11px; color: #bbb; margin-top: 2px; }
+        .payment-group { display: flex; gap: 6px; }
+        .pay-tab {
+          padding: 8px 16px; border-radius: 10px; border: 1px solid #e8d4e4;
+          font-size: 12px; font-weight: 700; cursor: pointer; background: #fff; color: #666;
+          transition: .15s;
+        }
+        .pay-tab.active { background: #8b3a6a; color: #fff; border-color: #8b3a6a; }
+        .action-group { display: flex; gap: 8px; }
+        .btn-clear {
+          padding: 11px 18px; border-radius: 12px; border: 1px solid #e8d4e4;
+          background: #fff; color: #999; font-size: 12px; font-weight: 600; cursor: pointer;
+          transition: .15s;
+        }
+        .btn-clear:hover { background: #fdf0f8; color: #c04070; border-color: #e8a4c4; }
+        .btn-generate {
+          padding: 11px 26px; border-radius: 12px;
+          background: linear-gradient(135deg, #8b3a6a, #c07a9c);
+          color: #fff; font-size: 13px; font-weight: 700; border: none; cursor: pointer;
+          box-shadow: 0 4px 14px rgba(139,58,106,.3); transition: .15s; letter-spacing: .3px;
+        }
+        .btn-generate:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(139,58,106,.4); }
+        .btn-generate:disabled { opacity: .45; cursor: not-allowed; }
+
+        /* ── Invoice overlay ── */
+        .inv-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,.55);
+          backdrop-filter: blur(4px); z-index: 9999;
+          display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .inv-sheet {
+          background: #fff; border-radius: 18px; width: 700px; max-height: 92vh;
+          overflow-y: auto; box-shadow: 0 24px 70px rgba(0,0,0,.3);
+          animation: slideUp .25s ease;
+        }
+        @keyframes slideUp { from{transform:translateY(28px);opacity:0} to{transform:translateY(0);opacity:1} }
+        .inv-actions {
+          display: flex; gap: 10px; padding: 14px 20px;
+          border-bottom: 1px solid #f0e0ec; justify-content: flex-end; flex-wrap: wrap;
+        }
+        .inv-btn {
+          display: flex; align-items: center; gap: 7px;
+          padding: 9px 18px; border-radius: 10px; font-size: 12px; font-weight: 700;
+          cursor: pointer; border: none; transition: .15s;
+        }
+        .btn-wa   { background: #25d366; color: #fff; }
+        .btn-wa:hover { background: #1aad54; }
+        .btn-print { background: #4a90e2; color: #fff; }
+        .btn-print:hover { background: #3178c6; }
+        .btn-x { background: #f5f5f5; color: #555; }
+        .btn-x:hover { background: #ffe0e0; color: #c04040; }
+
+        /* ── Print ── */
+        @media print {
+          body * { visibility: hidden !important; }
+          #printable-invoice, #printable-invoice * { visibility: visible !important; }
+          #printable-invoice { position: fixed; inset: 0; padding: 24px; }
+          .no-print { display: none !important; }
+        }
+
+        /* ── Success toast ── */
+        .toast {
+          position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+          background: #fff; border: 1px solid #b4e4c4; border-radius: 16px;
+          padding: 13px 28px; box-shadow: 0 8px 32px rgba(0,0,0,.14);
+          z-index: 9999; display: flex; align-items: center; gap: 10px;
+          font-size: 13px; font-weight: 600; color: #1a7a3a;
+          animation: slideUp .3s ease;
+        }
+      `}</style>
+
+      <div className="billing-wrap">
+        <div className="bill-card">
+
+          {/* ── Invoice ID bar ── */}
+          <div className="bill-header">
+            <h2 className="bill-title">🧾 New Invoice</h2>
+            <div className="inv-id-area">
+              {autoInv ? (
+                <>
+                  <span className="inv-badge">{invoiceId}</span>
+                  <button className="icon-btn" title="Enter manually" onClick={() => setAutoInv(false)}>✏️</button>
+                </>
+              ) : (
+                <>
+                  <input className="inv-edit-inp" value={invoiceId} onChange={e => setInvoiceId(e.target.value)} />
+                  <button className="icon-btn" title="Auto-generate" onClick={() => { setAutoInv(true); setInvoiceId(genInv()); }}>🔄</button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── Customer ── */}
+          <div className="cust-section">
+            <div className="cust-tabs">
+              {[['walkin','Walk-in'],['existing','Existing'],['new','New']].map(([k,l]) => (
+                <button key={k} className={`cust-tab ${custMode === k ? 'active' : ''}`} onClick={() => setCustMode(k)}>{l}</button>
+              ))}
+            </div>
+
+            {custMode === 'walkin' && (
+              <div className="cust-fields">
+                <input className="cust-inp" value="Walk-in Customer" readOnly style={{ color: '#aaa' }} />
+              </div>
+            )}
+
+            {custMode === 'existing' && (
+              <div className="cust-fields">
+                <select className="cust-sel" value={selCustId} onChange={e => setSelCustId(e.target.value)}>
+                  <option value="">— Select Customer —</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
+                  ))}
+                </select>
+                {custPhone && (
+                  <a className="wa-badge" href={`https://wa.me/91${custPhone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer">
+                    📱 {custPhone}
+                  </a>
+                )}
+              </div>
+            )}
+
+            {custMode === 'new' && (
+              <div className="cust-fields">
+                <input
+                  className="cust-inp"
+                  placeholder="Customer Name"
+                  value={custName === 'Walk-in Customer' ? '' : custName}
+                  onChange={e => setCustName(e.target.value)}
+                />
+                <input
+                  className="cust-inp"
+                  placeholder="Phone (WhatsApp)"
+                  value={custPhone}
+                  onChange={e => setCustPhone(e.target.value)}
+                  maxLength={10}
+                />
+                {custPhone.length >= 10 && (
+                  <a className="wa-badge" href={`https://wa.me/91${custPhone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer">
+                    💬 WA
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Items ── */}
+          <div className="items-wrap">
+            <table className="bill-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 28 }}>#</th>
+                  <th>Product Name</th>
+                  <th style={{ width: 110 }}>Category</th>
+                  <th style={{ width: 80 }}>Size</th>
+                  <th style={{ width: 60 }}>Qty</th>
+                  <th style={{ width: 100 }}>Rate (₹)</th>
+                  <th style={{ width: 90, textAlign: 'right' }}>Total</th>
+                  <th style={{ width: 28 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '36px 0', color: '#ccc', fontSize: 13 }}>
+                      Click "+ Add Row" to start billing
+                    </td>
+                  </tr>
+                ) : rows.map((row, i) => (
+                  <tr key={row._uid}>
+                    <td className="row-num">{i + 1}</td>
+                    <td>
+                      <ProductSearchCell
+                        value={row.name}
+                        products={products}
+                        onChange={val => updateRow(row._uid, 'name', val)}
+                        onSelect={prod => selectProduct(row._uid, prod)}
+                      />
+                    </td>
+                    <td>
+                      <select className="tbl-select" value={row.category} onChange={e => updateRow(row._uid, 'category', e.target.value)}>
+                        <option value="">—</option>
+                        {CATS.map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select className="tbl-select" value={row.size} onChange={e => updateRow(row._uid, 'size', e.target.value)}>
+                        {SIZES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number" min="1" className="tbl-input"
+                        value={row.qty}
+                        onChange={e => updateRow(row._uid, 'qty', Math.max(1, Number(e.target.value)))}
+                        style={{ textAlign: 'center' }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number" min="0" className="tbl-input"
+                        value={row.rate}
+                        onChange={e => updateRow(row._uid, 'rate', e.target.value)}
+                      />
+                    </td>
+                    <td className="row-total">
+                      ₹{((Number(row.rate) || 0) * (Number(row.qty) || 0)).toLocaleString('en-IN')}
+                    </td>
+                    <td>
+                      <button className="rm-btn" onClick={() => removeRow(row._uid)}>×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="add-row-btn" onClick={addBlankRow}>＋ Add Row</button>
+          </div>
+
+          {/* ── Bottom bar ── */}
+          <div className="bill-bottom">
+            <div className="total-area">
+              <div className="total-label">Grand Total</div>
+              <div className="grand-total">₹{grandTotal.toLocaleString('en-IN')}</div>
+              <div className="total-meta">{totalQty} item{totalQty !== 1 ? 's' : ''}</div>
+            </div>
+            <div className="payment-group">
+              {[['💵','Cash'],['📱','UPI'],['💳','Card']].map(([ic,m]) => (
+                <button key={m} className={`pay-tab ${payment === m ? 'active' : ''}`} onClick={() => setPayment(m)}>{ic} {m}</button>
+              ))}
+            </div>
+            <div className="action-group">
+              <button className="btn-clear" onClick={() => setRows([])}>Clear</button>
+              <button className="btn-generate" onClick={handleGenerate} disabled={!hasValidItem}>
+                🧾 Generate Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Invoice Preview Modal ── */}
+      {showInvoice && (
+        <div className="inv-overlay" onClick={() => setShowInvoice(false)}>
+          <div className="inv-sheet" onClick={e => e.stopPropagation()}>
+            <div className="inv-actions no-print">
+              <button className="inv-btn btn-wa" onClick={handleWhatsApp}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.121 1.533 5.849L.057 23.716a.5.5 0 00.612.612l5.867-1.476A11.942 11.942 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.943 0-3.763-.524-5.33-1.438l-.382-.228-3.483.877.893-3.483-.228-.382A9.952 9.952 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+                Send to WhatsApp
+              </button>
+              <button className="inv-btn btn-print" onClick={handlePrint}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                  <polyline points="6 9 6 2 18 2 18 9"/>
+                  <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+                  <rect x="6" y="14" width="12" height="8"/>
+                </svg>
+                Print Invoice
+              </button>
+              <button className="inv-btn btn-x" onClick={() => setShowInvoice(false)}>✕ Close</button>
+            </div>
+            <InvoiceView inv={buildInvoice()} />
+          </div>
+        </div>
+      )}
+
+      {showSuccess && (
+        <div className="toast">✅ Invoice saved successfully!</div>
+      )}
+    </>
   );
 }

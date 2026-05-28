@@ -28,14 +28,14 @@
       "invoice": "INV-1045",
       "item": "Elegant Saree",
       "type": "Return",
-      "status": "Pending"
+      "status": "Completed"
     },
     {
       "id": 2,
       "invoice": "INV-1048",
       "item": "Printed Leggings",
       "type": "Exchange",
-      "status": "Approved"
+      "status": "Completed"
     },
     {
       "id": 3,
@@ -43,6 +43,39 @@
       "item": "Chiffon Top",
       "type": "Return",
       "status": "Completed"
+    },
+    {
+      "invoice": "INV-SAMPLE",
+      "customer": "Sample Name",
+      "item": "Sample Item",
+      "type": "Return",
+      "qty": 1,
+      "reason": "Size issue",
+      "notes": "Sample note",
+      "status": "Pending",
+      "id": 4
+    },
+    {
+      "invoice": "INV-SAMPLE",
+      "customer": "Sample Name",
+      "item": "Sample Item",
+      "type": "Return",
+      "qty": 1,
+      "reason": "Size issue",
+      "notes": "Sample note",
+      "status": "Pending",
+      "id": 5
+    },
+    {
+      "invoice": "INV-SAMPLE",
+      "customer": "Sample Name",
+      "item": "Sample Item",
+      "type": "Return",
+      "qty": 1,
+      "reason": "Size issue",
+      "notes": "Sample note",
+      "status": "Completed",
+      "id": 6
     }
   ],
   "products": [
@@ -107,15 +140,6 @@
     }
   ],
   "bills": [
-    {
-      "id": "INV-2024-0842",
-      "customer": "Vikram Singh",
-      "amount": 2100,
-      "items": 1,
-      "time": "3 hours ago",
-      "status": "refunded",
-      "payment": "CASH"
-    },
     {
       "id": "INV-2024-0843",
       "customer": "Fatima Begum",
@@ -205,6 +229,246 @@
       "time": "Just now",
       "status": "completed",
       "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-7777",
+      "customer": "Walk-in Customer",
+      "amount": 3555,
+      "items": 2,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-346",
+      "customer": "Walk-in Customer",
+      "amount": 441,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Card"
+    },
+    {
+      "id": "INV-2026-9034",
+      "customer": "Walk-in Customer",
+      "amount": 653,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash"
+    },
+    {
+      "id": "INV-2026-8306",
+      "customer": "Walk-in Customer",
+      "phone": "",
+      "amount": 1250,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Cash",
+      "date": "28 May 2026",
+      "lineItems": [
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "id": "INV-2026-9199",
+      "customer": "Walk-in Customer",
+      "phone": "",
+      "amount": 2150,
+      "items": 15,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Card",
+      "date": "28 May 2026, 06:47 pm",
+      "lineItems": [
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        },
+        {
+          "name": "Cotton Leggings",
+          "category": "Leggings",
+          "size": "L",
+          "rate": 450,
+          "qty": 2
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        },
+        {
+          "name": "",
+          "category": "",
+          "size": "M",
+          "rate": "",
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "id": "INV-2026-4580",
+      "customer": "Walk-in Customer",
+      "phone": "",
+      "amount": 15250,
+      "items": 7,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "UPI",
+      "date": "28 May 2026, 06:55 pm",
+      "lineItems": [
+        {
+          "name": "Silk Saree - Navy Blue",
+          "category": "Saree",
+          "size": "M",
+          "rate": 4500,
+          "qty": 1
+        },
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        },
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        },
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        },
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        },
+        {
+          "name": "Silk Saree - Navy Blue",
+          "category": "Saree",
+          "size": "M",
+          "rate": 4500,
+          "qty": 1
+        },
+        {
+          "name": "Pink Floral Kurti",
+          "category": "Kurti",
+          "size": "M",
+          "rate": 1250,
+          "qty": 1
+        }
+      ]
+    },
+    {
+      "id": "INV-2026-9022",
+      "customer": "Samsung",
+      "phone": "865255755",
+      "amount": 4500,
+      "items": 1,
+      "time": "Just now",
+      "status": "completed",
+      "payment": "Card",
+      "date": "28 May 2026, 06:56 pm",
+      "lineItems": [
+        {
+          "name": "Silk Saree - Navy Blue",
+          "category": "Saree",
+          "size": "M",
+          "rate": 4500,
+          "qty": 1
+        }
+      ]
     }
   ],
   "dashboardStats": {
