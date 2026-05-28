@@ -52,7 +52,7 @@
       "qty": 1,
       "reason": "Size issue",
       "notes": "Sample note",
-      "status": "Pending",
+      "status": "Completed",
       "id": 4
     },
     {
@@ -63,7 +63,7 @@
       "qty": 1,
       "reason": "Size issue",
       "notes": "Sample note",
-      "status": "Pending",
+      "status": "Completed",
       "id": 5
     },
     {
@@ -76,6 +76,17 @@
       "notes": "Sample note",
       "status": "Completed",
       "id": 6
+    },
+    {
+      "invoice": "INV-2026-9199",
+      "customer": "Walk-in Customer",
+      "item": "Cotton Leggings",
+      "type": "Return",
+      "qty": 1,
+      "reason": "Customer changed mind",
+      "notes": "",
+      "status": "Completed",
+      "id": 7
     }
   ],
   "products": [
