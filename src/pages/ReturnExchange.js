@@ -35,6 +35,7 @@ export default function ReturnExchange() {
     if (selectedBill) {
       setNewReq(p => ({ ...p, customer: selectedBill.customer || '', item: '' }));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newReq.invoice]);
 
   /* ── Filtered list ── */

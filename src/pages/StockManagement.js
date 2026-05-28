@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  Search, Plus, Edit3, Package, AlertTriangle, ChevronDown, X, Download, ArrowUpDown, Trash2, RefreshCw
+  Search, Plus, Edit3, Package, AlertTriangle, ChevronDown, X, ArrowUpDown, Trash2, RefreshCw
 } from 'lucide-react';
 import { getProducts, addProduct, updateProduct, deleteProduct } from '../services/api';
 
