@@ -79,8 +79,8 @@ function ProductSearchCell({ value, products, onSelect, onChange }) {
 
 /* ──────────────────────────── Invoice Preview ───────────────────────────── */
 export function InvoiceView({ inv }) {
-  const { invoiceId, date, customer, phone, lineItems = [], paymentMethod, grandTotal } = inv;
-  const subtotal = (lineItems || []).reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0);
+  const { invoiceId, date, customer, phone, lineItems = [], paymentMethod, subtotal, discountFlat, discountPercent, discountAmount, taxRate, taxAmount, grandTotal } = inv;
+  const lineSubtotal = (lineItems || []).reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0);
 
   return (
     <div id="printable-invoice" style={{ fontFamily: "'Georgia', serif", color: '#1a1a1a', padding: '28px 32px' }}>
@@ -143,16 +143,46 @@ export function InvoiceView({ inv }) {
 
       {/* Totals */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
-        <table style={{ fontSize: 12, minWidth: 220 }}>
+        <table style={{ fontSize: 12, minWidth: 250 }}>
           <tbody>
             <tr>
               <td style={{ padding: '4px 10px', color: '#555' }}>Subtotal</td>
-              <td style={{ padding: '4px 10px', textAlign: 'right' }}>₹{subtotal.toLocaleString('en-IN')}</td>
+              <td style={{ padding: '4px 10px', textAlign: 'right' }}>₹{lineSubtotal.toLocaleString('en-IN')}</td>
+            </tr>
+            {(discountFlat || discountPercent) && (
+              <>
+                {discountFlat > 0 && (
+                  <tr>
+                    <td style={{ padding: '4px 10px', color: '#555' }}>Flat Discount (₹)</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: '#c04070' }}>-₹{Number(discountFlat).toLocaleString('en-IN')}</td>
+                  </tr>
+                )}
+                {discountPercent > 0 && (
+                  <tr>
+                    <td style={{ padding: '4px 10px', color: '#555' }}>Discount ({discountPercent}%)</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: '#c04070' }}>
+                      -₹{Math.round(lineSubtotal * discountPercent / 100).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                )}
+              </>
+            )}
+            {(discountFlat || discountPercent) && (
+              <tr style={{ background: '#fdf6fa' }}>
+                <td style={{ padding: '4px 10px', color: '#555' }}>After Discount</td>
+                <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>
+                  ₹{Math.max(0, lineSubtotal - (discountAmount || 0)).toLocaleString('en-IN')}
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td style={{ padding: '4px 10px', color: '#555' }}>Tax ({taxRate}%)</td>
+              <td style={{ padding: '4px 10px', textAlign: 'right' }}>₹{Number(taxAmount || 0).toLocaleString('en-IN')}</td>
             </tr>
             <tr style={{ borderTop: '2px solid #8b3a6a' }}>
               <td style={{ padding: '8px 10px', fontWeight: 800, fontSize: 14, color: '#8b3a6a' }}>GRAND TOTAL</td>
               <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#8b3a6a' }}>
-                ₹{Number(grandTotal || subtotal).toLocaleString('en-IN')}
+                ₹{Number(grandTotal || lineSubtotal).toLocaleString('en-IN')}
               </td>
             </tr>
           </tbody>
@@ -183,6 +213,9 @@ export default function Billing() {
   const [custPhone, setCustPhone]     = useState(draft.custPhone    || '');
   const [rows,      setRows]          = useState(draft.rows         || []);
   const [payment,   setPayment]       = useState(draft.payment      || 'Cash');
+  const [discountFlat, setDiscountFlat]     = useState(draft.discountFlat || 0);
+  const [discountPercent, setDiscountPercent] = useState(draft.discountPercent || 0);
+  const [taxRate,   setTaxRate]       = useState(draft.taxRate      || 5);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -193,8 +226,8 @@ export default function Billing() {
 
   /* auto-save draft to localStorage on every billing state change */
   useEffect(() => {
-    saveDraft({ invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment });
-  }, [invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment]);
+    saveDraft({ invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment, discountFlat, discountPercent, taxRate });
+  }, [invoiceId, autoInv, custMode, selCustId, custName, custPhone, rows, payment, discountFlat, discountPercent, taxRate]);
 
   /* customer mode sync */
   useEffect(() => {
@@ -224,9 +257,21 @@ export default function Billing() {
   /* ── totals ── */
   const hasValidItem = rows.some(r => r.name && r.name.trim() !== '');
   
-  const grandTotal = useMemo(() =>
+  const subtotal = useMemo(() =>
     Math.round(rows.reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0)),
   [rows]);
+
+  const discountAmount = useMemo(() => {
+    const flatDiscount = Number(discountFlat) || 0;
+    const percentDiscount = Math.round(subtotal * (Number(discountPercent) || 0) / 100);
+    return flatDiscount + percentDiscount;
+  }, [subtotal, discountFlat, discountPercent]);
+
+  const afterDiscount = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
+  
+  const taxAmount = useMemo(() => Math.round(afterDiscount * (Number(taxRate) || 0) / 100), [afterDiscount, taxRate]);
+
+  const grandTotal = useMemo(() => afterDiscount + taxAmount, [afterDiscount, taxAmount]);
 
   const totalQty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
@@ -238,6 +283,12 @@ export default function Billing() {
     phone: custPhone,
     lineItems: rows.map(({ _uid, ...rest }) => rest),
     paymentMethod: payment,
+    subtotal,
+    discountFlat,
+    discountPercent,
+    discountAmount,
+    taxRate,
+    taxAmount,
     grandTotal,
   });
 
@@ -255,6 +306,11 @@ export default function Billing() {
         payment: inv.paymentMethod,
         date: inv.date,
         lineItems: inv.lineItems,
+        subtotal: inv.subtotal,
+        discountFlat: inv.discountFlat,
+        discountPercent: inv.discountPercent,
+        taxRate: inv.taxRate,
+        taxAmount: inv.taxAmount,
       });
 
       // Deduct stock for each line item that has a known product
@@ -427,6 +483,27 @@ export default function Billing() {
           padding: 14px 24px; border-top: 1.5px solid #f0e0ec;
           display: flex; align-items: center; justify-content: space-between; gap: 16px;
           flex-wrap: wrap;
+        }
+        .discount-section {
+          display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+          padding: 14px 24px; border-top: 1px solid #f5edf3; background: #fdf6fa;
+        }
+        .discount-label { font-size: 12px; font-weight: 700; color: #8b3a6a; }
+        .discount-btns { display: flex; gap: 5px; }
+        .disc-btn {
+          padding: 6px 12px; border-radius: 8px; border: 1px solid #d4a4c4;
+          background: #fff; color: #8b3a6a; font-size: 11px; font-weight: 600;
+          cursor: pointer; transition: .15s;
+        }
+        .disc-btn:hover { background: #e8d4e4; }
+        .disc-btn.active { background: #8b3a6a; color: #fff; border-color: #8b3a6a; }
+        .discount-inp {
+          width: 70px; border: 1px solid #d4a4c4; border-radius: 8px;
+          padding: 6px 10px; font-size: 12px; outline: none; background: #fff; color: #333;
+        }
+        .discount-inp:focus { border-color: #8b3a6a; }
+        .discount-info {
+          font-size: 11px; color: #c04070; font-weight: 600;
         }
         .total-area { display: flex; flex-direction: column; }
         .total-label { font-size: 11px; color: #aaa; margin-bottom: 2px; }
@@ -649,12 +726,60 @@ export default function Billing() {
             <button className="add-row-btn" onClick={addBlankRow}>＋ Add Row</button>
           </div>
 
+          {/* ── Discount Section ── */}
+          <div className="discount-section">
+            <div className="discount-label">💰 Discount:</div>
+            
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div>
+                <div className="discount-label" style={{ fontSize: 11, marginBottom: 5 }}>% Discount</div>
+                <div className="discount-btns">
+                  {[5, 10, 15, 20].map(pct => (
+                    <button
+                      key={pct}
+                      className={`disc-btn ${discountPercent === pct ? 'active' : ''}`}
+                      onClick={() => setDiscountPercent(discountPercent === pct ? 0 : pct)}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <div className="discount-label" style={{ fontSize: 11, marginBottom: 5 }}>Custom %</div>
+                <input
+                  type="number" min="0" max="100" className="discount-inp"
+                  placeholder="Enter %"
+                  value={discountPercent}
+                  onChange={e => setDiscountPercent(Math.max(0, Number(e.target.value)))}
+                />
+              </div>
+
+              <div>
+                <div className="discount-label" style={{ fontSize: 11, marginBottom: 5 }}>Flat (₹)</div>
+                <input
+                  type="number" min="0" className="discount-inp"
+                  placeholder="Enter amount"
+                  value={discountFlat}
+                  onChange={e => setDiscountFlat(Math.max(0, Number(e.target.value)))}
+                />
+              </div>
+            </div>
+
+            {discountAmount > 0 && (
+              <div className="discount-info">
+                You save ₹{discountAmount.toLocaleString('en-IN')}
+              </div>
+            )}
+          </div>
+
           {/* ── Bottom bar ── */}
           <div className="bill-bottom">
             <div className="total-area">
-              <div className="total-label">Grand Total</div>
+              <div className="total-label">Grand Total (incl. {taxRate}% tax)</div>
               <div className="grand-total">₹{grandTotal.toLocaleString('en-IN')}</div>
-              <div className="total-meta">{totalQty} item{totalQty !== 1 ? 's' : ''}</div>
+              <div className="total-meta">{totalQty} item{totalQty !== 1 ? 's' : ''} {discountAmount > 0 ? `· Save ₹${discountAmount.toLocaleString('en-IN')}` : ''}</div>
             </div>
             <div className="payment-group">
               {[['💵','Cash'],['📱','UPI'],['💳','Card']].map(([ic,m]) => (
@@ -662,7 +787,7 @@ export default function Billing() {
               ))}
             </div>
             <div className="action-group">
-              <button className="btn-clear" onClick={() => setRows([])}>Clear</button>
+              <button className="btn-clear" onClick={() => { setRows([]); setDiscountFlat(0); setDiscountPercent(0); }}>Clear</button>
               <button className="btn-generate" onClick={handleGenerate} disabled={!hasValidItem}>
                 🧾 Generate Invoice
               </button>

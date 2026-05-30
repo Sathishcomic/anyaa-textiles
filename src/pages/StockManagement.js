@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  Search, Plus, Edit3, Package, AlertTriangle, ChevronDown, X, ArrowUpDown, Trash2, RefreshCw
+  Search, Plus, Edit3, Package, AlertTriangle, ChevronDown, X, ArrowUpDown, Trash2, RefreshCw, Layers
 } from 'lucide-react';
 import { getProducts, addProduct, updateProduct, deleteProduct } from '../services/api';
+import { VariantManager } from '../components/VariantManager';
 
 const CATS = ['Kurti', 'Saree', 'Leggings', 'Tops', 'Nighty', 'Chudithar', 'Other'];
 const UNITS = ['pieces', 'meters', 'sets', 'rolls'];
@@ -19,6 +20,8 @@ export default function StockManagement() {
   const [sortConfig, setSortConfig]   = useState({ key: null, direction: 'asc' });
   const [formData, setFormData]       = useState(emptyForm);
   const [saving, setSaving]           = useState(false);
+  const [expandedId, setExpandedId]   = useState(null);
+  const [showVariantMgr, setShowVariantMgr] = useState(null);
 
   /* ─── Load from DB ─── */
   const loadInventory = useCallback(async () => {
@@ -245,6 +248,9 @@ export default function StockManagement() {
                     <td className="px-5 py-4">{getStatusBadge(item)}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1">
+                        <button onClick={() => setShowVariantMgr(item)} className="p-2 rounded-lg text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all" title="Manage Variants">
+                          <Layers className="w-4 h-4" />
+                        </button>
                         <button onClick={() => openEditModal(item)} className="p-2 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-all" title="Edit">
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -323,6 +329,37 @@ export default function StockManagement() {
               <button onClick={handleSave} disabled={saving} className="btn-primary text-sm">
                 {saving ? 'Saving…' : editItem ? 'Update Product' : 'Add Product'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Manager Modal */}
+      {showVariantMgr && (
+        <div className="modal-overlay" onClick={() => setShowVariantMgr(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+            <div className="flex items-center justify-between p-6 border-b border-surface-100">
+              <h3 className="text-lg font-display font-bold text-surface-800">
+                🎨 Manage Variants: {showVariantMgr.name}
+              </h3>
+              <button onClick={() => setShowVariantMgr(null)} className="p-2 rounded-lg hover:bg-surface-100">
+                <X className="w-5 h-5 text-surface-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <VariantManager
+                product={showVariantMgr}
+                onSave={async (updatedProduct) => {
+                  try {
+                    await updateProduct(updatedProduct.id, updatedProduct);
+                    await loadInventory();
+                    setShowVariantMgr(null);
+                  } catch (e) {
+                    alert('Failed to save variants');
+                  }
+                }}
+                onCancel={() => setShowVariantMgr(null)}
+              />
             </div>
           </div>
         </div>
