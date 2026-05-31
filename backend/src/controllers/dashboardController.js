@@ -1,13 +1,13 @@
 const db = require('../database/db');
 
 // Get dashboard statistics
-const getDashboardStats = (req, res) => {
+const getDashboardStats = async (req, res) => {
   try {
     // Get today's date
     const today = new Date().toISOString().split('T')[0];
 
     // Today's sales
-    const todaySalesResult = db.get(
+    const todaySalesResult = await db.get(
       'SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ?',
       [today]
     );
@@ -15,7 +15,7 @@ const getDashboardStats = (req, res) => {
 
     // Today's sales growth (compare with yesterday)
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const yesterdaySalesResult = db.get(
+    const yesterdaySalesResult = await db.get(
       'SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ?',
       [yesterday]
     );
@@ -25,14 +25,14 @@ const getDashboardStats = (req, res) => {
       : 0;
 
     // Total bills today
-    const totalBillsResult = db.get(
+    const totalBillsResult = await db.get(
       'SELECT COUNT(*) as count FROM bills WHERE DATE(bill_date) = ?',
       [today]
     );
     const totalBills = totalBillsResult.count;
 
     // Total bills growth
-    const yesterdayBillsResult = db.get(
+    const yesterdayBillsResult = await db.get(
       'SELECT COUNT(*) as count FROM bills WHERE DATE(bill_date) = ?',
       [yesterday]
     );
@@ -42,14 +42,14 @@ const getDashboardStats = (req, res) => {
       : 0;
 
     // Cash sales today
-    const cashSalesResult = db.get(
+    const cashSalesResult = await db.get(
       "SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ? AND payment_method = 'Cash'",
       [today]
     );
     const cashSales = cashSalesResult.total;
 
     // Cash sales growth
-    const yesterdayCashSalesResult = db.get(
+    const yesterdayCashSalesResult = await db.get(
       "SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ? AND payment_method = 'Cash'",
       [yesterday]
     );
@@ -59,14 +59,14 @@ const getDashboardStats = (req, res) => {
       : 0;
 
     // UPI sales today
-    const upiSalesResult = db.get(
+    const upiSalesResult = await db.get(
       "SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ? AND payment_method = 'UPI'",
       [today]
     );
     const upiSales = upiSalesResult.total;
 
     // UPI sales growth
-    const yesterdayUpiSalesResult = db.get(
+    const yesterdayUpiSalesResult = await db.get(
       "SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ? AND payment_method = 'UPI'",
       [yesterday]
     );
@@ -76,11 +76,11 @@ const getDashboardStats = (req, res) => {
       : 0;
 
     // Stock items count
-    const stockItemsResult = db.get('SELECT COUNT(*) as count FROM products');
+    const stockItemsResult = await db.get('SELECT COUNT(*) as count FROM products');
     const stockItems = stockItemsResult.count;
 
     // Low stock alerts
-    const lowStockAlertsResult = db.get(
+    const lowStockAlertsResult = await db.get(
       'SELECT COUNT(*) as count FROM products WHERE stock < min_stock'
     );
     const lowStockAlerts = lowStockAlertsResult.count;
@@ -96,7 +96,7 @@ const getDashboardStats = (req, res) => {
       const dateStr = date.toISOString().split('T')[0];
       const dayName = days[date.getDay()];
 
-      const salesResult = db.get(
+      const salesResult = await db.get(
         'SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ?',
         [dateStr]
       );
@@ -111,7 +111,7 @@ const getDashboardStats = (req, res) => {
       // Last week same day
       const lastWeekDate = new Date(Date.now() - (i + 7) * 86400000);
       const lastWeekDateStr = lastWeekDate.toISOString().split('T')[0];
-      const lastWeekSalesResult = db.get(
+      const lastWeekSalesResult = await db.get(
         'SELECT COALESCE(SUM(total), 0) as total FROM bills WHERE DATE(bill_date) = ?',
         [lastWeekDateStr]
       );

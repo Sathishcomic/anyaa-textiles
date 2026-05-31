@@ -1,7 +1,7 @@
 const db = require('../database/db');
 
 // Get all customers
-const getCustomers = (req, res) => {
+const getCustomers = async (req, res) => {
   try {
     const { search, segment, status } = req.query;
     
@@ -30,7 +30,7 @@ const getCustomers = (req, res) => {
 
     sql += ' ORDER BY created_at DESC';
 
-    const customers = db.all(sql, params);
+    const customers = await db.all(sql, params);
 
     res.json({
       success: true,
@@ -47,11 +47,11 @@ const getCustomers = (req, res) => {
 };
 
 // Get single customer
-const getCustomer = (req, res) => {
+const getCustomer = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const customer = db.get('SELECT * FROM customers WHERE id = ?', [id]);
+    const customer = await db.get('SELECT * FROM customers WHERE id = ?', [id]);
 
     if (!customer) {
       return res.status(404).json({
@@ -61,7 +61,7 @@ const getCustomer = (req, res) => {
     }
 
     // Get customer's bills
-    const bills = db.all(
+    const bills = await db.all(
       'SELECT * FROM bills WHERE customer_id = ? ORDER BY bill_date DESC LIMIT 10',
       [id]
     );
@@ -81,11 +81,11 @@ const getCustomer = (req, res) => {
 };
 
 // Create customer
-const createCustomer = (req, res) => {
+const createCustomer = async (req, res) => {
   try {
     const { name, phone, email, gstNo, address, segment, status } = req.body;
 
-    const result = db.run(
+    const result = await db.run(
       `INSERT INTO customers (name, phone, email, gst_no, address, segment, status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -99,7 +99,7 @@ const createCustomer = (req, res) => {
       ]
     );
 
-    const newCustomer = db.get('SELECT * FROM customers WHERE id = ?', [result.lastInsertRowid]);
+    const newCustomer = await db.get('SELECT * FROM customers WHERE id = ?', [result.lastInsertRowid]);
 
     res.status(201).json({
       success: true,
@@ -117,12 +117,12 @@ const createCustomer = (req, res) => {
 };
 
 // Update customer
-const updateCustomer = (req, res) => {
+const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, phone, email, gstNo, address, segment, status, totalPurchases, due } = req.body;
 
-    const existingCustomer = db.get('SELECT * FROM customers WHERE id = ?', [id]);
+    const existingCustomer = await db.get('SELECT * FROM customers WHERE id = ?', [id]);
     if (!existingCustomer) {
       return res.status(404).json({
         success: false,
@@ -130,7 +130,7 @@ const updateCustomer = (req, res) => {
       });
     }
 
-    db.run(
+    await db.run(
       `UPDATE customers 
        SET name = ?, phone = ?, email = ?, gst_no = ?, address = ?, 
            segment = ?, status = ?, total_purchases = ?, due = ?, updated_at = CURRENT_TIMESTAMP
@@ -149,7 +149,7 @@ const updateCustomer = (req, res) => {
       ]
     );
 
-    const updatedCustomer = db.get('SELECT * FROM customers WHERE id = ?', [id]);
+    const updatedCustomer = await db.get('SELECT * FROM customers WHERE id = ?', [id]);
 
     res.json({
       success: true,
@@ -167,11 +167,11 @@ const updateCustomer = (req, res) => {
 };
 
 // Delete customer
-const deleteCustomer = (req, res) => {
+const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingCustomer = db.get('SELECT * FROM customers WHERE id = ?', [id]);
+    const existingCustomer = await db.get('SELECT * FROM customers WHERE id = ?', [id]);
     if (!existingCustomer) {
       return res.status(404).json({
         success: false,
@@ -179,7 +179,7 @@ const deleteCustomer = (req, res) => {
       });
     }
 
-    db.run('DELETE FROM customers WHERE id = ?', [id]);
+    await db.run('DELETE FROM customers WHERE id = ?', [id]);
 
     res.json({
       success: true,

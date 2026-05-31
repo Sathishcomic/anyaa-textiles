@@ -1,10 +1,10 @@
 const db = require('../database/db');
 
 // Get all bills
-const getBills = (req, res) => {
+const getBills = async (req, res) => {
   try {
     const { search, status, paymentMethod, fromDate, toDate, limit = 50 } = req.query;
-    
+
     let sql = 'SELECT * FROM bills';
     let params = [];
     let conditions = [];
@@ -41,7 +41,7 @@ const getBills = (req, res) => {
     sql += ' ORDER BY bill_date DESC LIMIT ?';
     params.push(parseInt(limit));
 
-    const bills = db.all(sql, params);
+    const bills = await db.all(sql, params);
 
     res.json({
       success: true,
@@ -58,11 +58,11 @@ const getBills = (req, res) => {
 };
 
 // Get single bill with items
-const getBill = (req, res) => {
+const getBill = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const bill = db.get('SELECT * FROM bills WHERE id = ?', [id]);
+
+    const bill = await db.get('SELECT * FROM bills WHERE id = ?', [id]);
 
     if (!bill) {
       return res.status(404).json({
@@ -72,7 +72,7 @@ const getBill = (req, res) => {
     }
 
     // Get bill items
-    const items = db.all('SELECT * FROM bill_items WHERE bill_id = ?', [id]);
+    const items = await db.all('SELECT * FROM bill_items WHERE bill_id = ?', [id]);
 
     res.json({
       success: true,
@@ -89,7 +89,7 @@ const getBill = (req, res) => {
 };
 
 // Create bill with transaction
-const createBill = (req, res) => {
+const createBill = async (req, res) => {
   try {
     const { 
       bill_number, customer_id, customer_name, customer_phone,
@@ -97,10 +97,18 @@ const createBill = (req, res) => {
       payment_method, payment_status, lineItems 
     } = req.body;
 
-    // Start transaction
-    const createBillTxn = db.transaction(() => {
+    // Check if bill_number already exists
+    const existingBill = await db.get('SELECT id FROM bills WHERE bill_number = ?', [bill_number]);
+    if (existingBill) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bill number already exists. Please generate a new invoice number.'
+      });
+    }
+
+    const billId = await db.transaction(async () => {
       // Insert bill
-      const billResult = db.run(
+      const billResult = await db.run(
         `INSERT INTO bills (bill_number, customer_id, customer_name, customer_phone,
          subtotal, tax_amount, discount_flat, discount_percent, total,
          payment_method, payment_status, items_count, bill_date)
@@ -121,50 +129,41 @@ const createBill = (req, res) => {
         ]
       );
 
-      const billId = billResult.lastInsertRowid;
+      const newBillId = billResult.lastInsertRowid;
 
       // Insert bill items
-      const insertItem = db.prepare(
-        `INSERT INTO bill_items (bill_id, product_id, product_name, category, size, quantity, unit_price, line_total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-
       for (const item of lineItems) {
-        insertItem.run(
-          billId,
-          item.product_id || null,
-          item.name,
-          item.category || null,
-          item.size || null,
-          item.quantity,
-          item.rate,
-          item.quantity * item.rate
+        await db.run(
+          `INSERT INTO bill_items (bill_id, product_id, product_name, category, size, quantity, unit_price, line_total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newBillId,
+            item.product_id || null,
+            item.name,
+            item.category || null,
+            item.size || null,
+            item.quantity,
+            item.rate,
+            item.quantity * item.rate
+          ]
         );
 
         // Update product stock
         if (item.product_id) {
-          db.run(
-            'UPDATE products SET stock = stock - ? WHERE id = ?',
-            [item.quantity, item.product_id]
-          );
+          await db.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.product_id]);
         }
       }
 
       // Update customer total purchases if customer exists
       if (customer_id) {
-        db.run(
-          'UPDATE customers SET total_purchases = total_purchases + ? WHERE id = ?',
-          [total, customer_id]
-        );
+        await db.run('UPDATE customers SET total_purchases = total_purchases + ? WHERE id = ?', [total, customer_id]);
       }
 
-      return billId;
+      return newBillId;
     });
 
-    const billId = createBillTxn();
-
-    const newBill = db.get('SELECT * FROM bills WHERE id = ?', [billId]);
-    const items = db.all('SELECT * FROM bill_items WHERE bill_id = ?', [billId]);
+    const newBill = await db.get('SELECT * FROM bills WHERE id = ?', [billId]);
+    const items = await db.all('SELECT * FROM bill_items WHERE bill_id = ?', [billId]);
 
     res.status(201).json({
       success: true,
@@ -182,12 +181,12 @@ const createBill = (req, res) => {
 };
 
 // Update bill
-const updateBill = (req, res) => {
+const updateBill = async (req, res) => {
   try {
     const { id } = req.params;
     const { customer_name, customer_phone, payment_status, payment_method } = req.body;
 
-    const existingBill = db.get('SELECT * FROM bills WHERE id = ?', [id]);
+    const existingBill = await db.get('SELECT * FROM bills WHERE id = ?', [id]);
     if (!existingBill) {
       return res.status(404).json({
         success: false,
@@ -195,7 +194,7 @@ const updateBill = (req, res) => {
       });
     }
 
-    db.run(
+    await db.run(
       `UPDATE bills 
        SET customer_name = ?, customer_phone = ?, payment_status = ?, 
            payment_method = ?, updated_at = CURRENT_TIMESTAMP
@@ -209,7 +208,7 @@ const updateBill = (req, res) => {
       ]
     );
 
-    const updatedBill = db.get('SELECT * FROM bills WHERE id = ?', [id]);
+    const updatedBill = await db.get('SELECT * FROM bills WHERE id = ?', [id]);
 
     res.json({
       success: true,
@@ -227,11 +226,11 @@ const updateBill = (req, res) => {
 };
 
 // Delete bill
-const deleteBill = (req, res) => {
+const deleteBill = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingBill = db.get('SELECT * FROM bills WHERE id = ?', [id]);
+    const existingBill = await db.get('SELECT * FROM bills WHERE id = ?', [id]);
     if (!existingBill) {
       return res.status(404).json({
         success: false,
@@ -240,32 +239,24 @@ const deleteBill = (req, res) => {
     }
 
     // Start transaction to restore stock
-    const deleteBillTxn = db.transaction(() => {
+    await db.transaction(async () => {
       // Get bill items to restore stock
-      const items = db.all('SELECT * FROM bill_items WHERE bill_id = ?', [id]);
+      const items = await db.all('SELECT * FROM bill_items WHERE bill_id = ?', [id]);
       
       for (const item of items) {
         if (item.product_id) {
-          db.run(
-            'UPDATE products SET stock = stock + ? WHERE id = ?',
-            [item.quantity, item.product_id]
-          );
+          await db.run('UPDATE products SET stock = stock + ? WHERE id = ?', [item.quantity, item.product_id]);
         }
       }
 
       // Delete bill (cascade will delete items)
-      db.run('DELETE FROM bills WHERE id = ?', [id]);
+      await db.run('DELETE FROM bills WHERE id = ?', [id]);
 
       // Update customer total purchases
       if (existingBill.customer_id) {
-        db.run(
-          'UPDATE customers SET total_purchases = total_purchases - ? WHERE id = ?',
-          [existingBill.total, existingBill.customer_id]
-        );
+        await db.run('UPDATE customers SET total_purchases = total_purchases - ? WHERE id = ?', [existingBill.total, existingBill.customer_id]);
       }
     });
-
-    deleteBillTxn();
 
     res.json({
       success: true,

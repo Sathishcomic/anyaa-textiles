@@ -8,7 +8,7 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Find user by email
-    const user = db.get(
+    const user = await db.get(
       'SELECT * FROM users WHERE email = ? AND active = 1',
       [email]
     );
@@ -64,9 +64,9 @@ const logout = (req, res) => {
 };
 
 // Get current user
-const getCurrentUser = (req, res) => {
+const getCurrentUser = async (req, res) => {
   try {
-    const user = db.get(
+    const user = await db.get(
       'SELECT id, email, name, role, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
@@ -93,9 +93,9 @@ const getCurrentUser = (req, res) => {
 };
 
 // Get all users (admin only)
-const getAllUsers = (req, res) => {
+const getAllUsers = async (req, res) => {
   try {
-    const users = db.all(
+    const users = await db.all(
       'SELECT id, email, name, role, active, created_at FROM users ORDER BY created_at DESC'
     );
 

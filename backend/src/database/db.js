@@ -1,68 +1,83 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dataDir = path.join(__dirname, '..', '..', 'data');
+// Database path: backend/database/anyaa.db
+const dataDir = path.join(__dirname, '..', '..', 'database');
 const dbPath = path.join(dataDir, 'anyaa.db');
 
-// Create data directory if it doesn't exist
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// Initialize database connection
-const db = new Database(dbPath);
-
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
-
-// Enable WAL mode for better performance
-db.pragma('journal_mode = WAL');
-
-// Create database connection wrapper with query helpers
-class DatabaseWrapper {
-  constructor(db) {
-    this.db = db;
+// Open database
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('Failed to open database:', err);
+  } else {
+    // Enable foreign keys
+    db.run('PRAGMA foreign_keys = ON');
+    // WAL mode for better concurrency
+    db.run("PRAGMA journal_mode = WAL");
   }
+});
 
-  // Generic query methods
-  all(sql, params = []) {
-    try {
-      return this.db.prepare(sql).all(...params);
-    } catch (error) {
-      console.error('Database query error:', error);
-      throw error;
-    }
-  }
+// Promise wrappers
+function run(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) return reject(err);
+      resolve({ lastInsertRowid: this.lastID, changes: this.changes });
+    });
+  });
+}
 
-  get(sql, params = []) {
-    try {
-      return this.db.prepare(sql).get(...params);
-    } catch (error) {
-      console.error('Database query error:', error);
-      throw error;
-    }
-  }
+function get(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
 
-  run(sql, params = []) {
-    try {
-      return this.db.prepare(sql).run(...params);
-    } catch (error) {
-      console.error('Database query error:', error);
-      throw error;
-    }
-  }
+function all(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
 
-  // Transaction support
-  transaction(fn) {
-    const txn = this.db.transaction(fn);
-    return txn;
-  }
-
-  // Close connection
-  close() {
-    this.db.close();
+async function transaction(fn) {
+  await run('BEGIN');
+  try {
+    const result = await fn();
+    await run('COMMIT');
+    return result;
+  } catch (err) {
+    await run('ROLLBACK');
+    throw err;
   }
 }
 
-module.exports = new DatabaseWrapper(db);
+function close() {
+  return new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+module.exports = {
+  run,
+  get,
+  all,
+  transaction,
+  close,
+  _raw: db,
+  path: dbPath,
+};
+// end of file

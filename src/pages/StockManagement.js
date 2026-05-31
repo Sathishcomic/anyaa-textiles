@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Search, Plus, Edit3, Package, AlertTriangle, ChevronDown, X, ArrowUpDown, Trash2, RefreshCw, Layers
 } from 'lucide-react';
-import { getProducts, addProduct, updateProduct, deleteProduct } from '../services/api';
+import { getProducts, getProduct, addProduct, updateProduct, deleteProduct } from '../services/api';
 import { VariantManager } from '../components/VariantManager';
 
 const CATS = ['Kurti', 'Saree', 'Leggings', 'Tops', 'Nighty', 'Chudithar', 'Other'];
@@ -27,8 +27,8 @@ export default function StockManagement() {
   const loadInventory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getProducts();
-      setInventory(res.data);
+      const products = await getProducts();
+      setInventory(Array.isArray(products) ? products : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -133,6 +133,16 @@ export default function StockManagement() {
     if (s === 'Out of Stock') return <span className="badge-danger">Out of Stock</span>;
     if (s === 'Low Stock')    return <span className="badge-warning">Low Stock</span>;
     return <span className="badge-success">In Stock</span>;
+  };
+
+  const handleManageVariants = async (item) => {
+    try {
+      const product = await getProduct(item.id);
+      setShowVariantMgr(product || item);
+    } catch (e) {
+      console.error('Failed to load product details', e);
+      setShowVariantMgr(item);
+    }
   };
 
   return (
@@ -248,7 +258,7 @@ export default function StockManagement() {
                     <td className="px-5 py-4">{getStatusBadge(item)}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setShowVariantMgr(item)} className="p-2 rounded-lg text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all" title="Manage Variants">
+                        <button onClick={() => handleManageVariants(item)} className="p-2 rounded-lg text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all" title="Manage Variants">
                           <Layers className="w-4 h-4" />
                         </button>
                         <button onClick={() => openEditModal(item)} className="p-2 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-all" title="Edit">

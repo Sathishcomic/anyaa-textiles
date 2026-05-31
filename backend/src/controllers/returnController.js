@@ -1,10 +1,10 @@
 const db = require('../database/db');
 
 // Get all returns
-const getReturns = (req, res) => {
+const getReturns = async (req, res) => {
   try {
     const { status, type, search } = req.query;
-    
+
     let sql = 'SELECT * FROM returns';
     let params = [];
     let conditions = [];
@@ -30,7 +30,7 @@ const getReturns = (req, res) => {
 
     sql += ' ORDER BY created_at DESC';
 
-    const returns = db.all(sql, params);
+    const returns = await db.all(sql, params);
 
     res.json({
       success: true,
@@ -47,11 +47,11 @@ const getReturns = (req, res) => {
 };
 
 // Get single return
-const getReturn = (req, res) => {
+const getReturn = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const returnRecord = db.get('SELECT * FROM returns WHERE id = ?', [id]);
+
+    const returnRecord = await db.get('SELECT * FROM returns WHERE id = ?', [id]);
 
     if (!returnRecord) {
       return res.status(404).json({
@@ -75,11 +75,11 @@ const getReturn = (req, res) => {
 };
 
 // Create return
-const createReturn = (req, res) => {
+const createReturn = async (req, res) => {
   try {
     const { invoice, customer, item, type, quantity, reason, notes } = req.body;
 
-    const result = db.run(
+    const result = await db.run(
       `INSERT INTO returns (invoice, customer, item, type, quantity, reason, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -93,7 +93,7 @@ const createReturn = (req, res) => {
       ]
     );
 
-    const newReturn = db.get('SELECT * FROM returns WHERE id = ?', [result.lastInsertRowid]);
+    const newReturn = await db.get('SELECT * FROM returns WHERE id = ?', [result.lastInsertRowid]);
 
     res.status(201).json({
       success: true,
@@ -111,12 +111,12 @@ const createReturn = (req, res) => {
 };
 
 // Update return
-const updateReturn = (req, res) => {
+const updateReturn = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body;
 
-    const existingReturn = db.get('SELECT * FROM returns WHERE id = ?', [id]);
+    const existingReturn = await db.get('SELECT * FROM returns WHERE id = ?', [id]);
     if (!existingReturn) {
       return res.status(404).json({
         success: false,
@@ -124,7 +124,7 @@ const updateReturn = (req, res) => {
       });
     }
 
-    db.run(
+    await db.run(
       `UPDATE returns 
        SET status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
@@ -135,7 +135,7 @@ const updateReturn = (req, res) => {
       ]
     );
 
-    const updatedReturn = db.get('SELECT * FROM returns WHERE id = ?', [id]);
+    const updatedReturn = await db.get('SELECT * FROM returns WHERE id = ?', [id]);
 
     res.json({
       success: true,
@@ -153,11 +153,11 @@ const updateReturn = (req, res) => {
 };
 
 // Delete return
-const deleteReturn = (req, res) => {
+const deleteReturn = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingReturn = db.get('SELECT * FROM returns WHERE id = ?', [id]);
+    const existingReturn = await db.get('SELECT * FROM returns WHERE id = ?', [id]);
     if (!existingReturn) {
       return res.status(404).json({
         success: false,
@@ -165,7 +165,7 @@ const deleteReturn = (req, res) => {
       });
     }
 
-    db.run('DELETE FROM returns WHERE id = ?', [id]);
+    await db.run('DELETE FROM returns WHERE id = ?', [id]);
 
     res.json({
       success: true,

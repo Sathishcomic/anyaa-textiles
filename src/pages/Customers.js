@@ -15,7 +15,7 @@ export default function Customers() {
   const loadCustomers = async () => {
     try {
       const res = await getCustomers();
-      setCustomers(res.data);
+      setCustomers(res?.data?.data || []);
     } catch (e) {
       console.error(e);
     }

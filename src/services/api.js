@@ -15,27 +15,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export const getProducts = () => api.get('/products');
-export const addProduct = (product) => api.post('/products', product);
-export const updateProduct = (id, product) => api.put(`/products/${id}`, product);
-export const deleteProduct = (id) => api.delete(`/products/${id}`);
+export const getProducts = async () => (await api.get('/products')).data.data;
+export const getProduct = async (id) => (await api.get(`/products/${id}`)).data.data;
+export const addProduct = async (product) => (await api.post('/products', product)).data.data;
+export const updateProduct = async (id, product) => (await api.put(`/products/${id}`, product)).data.data;
+export const deleteProduct = async (id) => (await api.delete(`/products/${id}`)).data.data;
 
-export const getCustomers = () => api.get('/customers');
-export const addCustomer = (customer) => api.post('/customers', customer);
-export const updateCustomer = (id, customer) => api.put(`/customers/${id}`, customer);
+export const getCustomers = async () => (await api.get('/customers')).data.data;
+export const addCustomer = async (customer) => (await api.post('/customers', customer)).data.data;
+export const updateCustomer = async (id, customer) => (await api.put(`/customers/${id}`, customer)).data.data;
 
-export const getBills = () => api.get('/bills');
-export const addBill = (bill) => api.post('/bills', bill);
-export const updateBill = (id, bill) => api.put(`/bills/${id}`, bill);
-export const deleteBill = (id) => api.delete(`/bills/${id}`);
+export const getBills = async () => (await api.get('/bills')).data.data;
+export const addBill = async (bill) => (await api.post('/bills', bill)).data.data;
+export const updateBill = async (id, bill) => (await api.put(`/bills/${id}`, bill)).data.data;
+export const deleteBill = async (id) => (await api.delete(`/bills/${id}`)).data.data;
 
-export const getDashboardStats = () => api.get('/dashboardStats');
-export const getUsers = () => api.get('/auth/users');
+export const getDashboardStats = async () => (await api.get('/dashboardStats')).data.data;
+export const getUsers = async () => (await api.get('/auth/users')).data.data;
 
-export const getReturns = () => api.get('/returns');
-export const addReturn = (req) => api.post('/returns', req);
-export const updateReturn = (id, req) => api.put(`/returns/${id}`, req);
-export const deleteReturn = (id) => api.delete(`/returns/${id}`);
+export const getReturns = async () => (await api.get('/returns')).data.data;
+export const addReturn = async (req) => (await api.post('/returns', req)).data.data;
+export const updateReturn = async (id, req) => (await api.put(`/returns/${id}`, req)).data.data;
+export const deleteReturn = async (id) => (await api.delete(`/returns/${id}`)).data.data;
 
 // Login with JWT authentication
 export const login = async (email, password) => {

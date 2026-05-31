@@ -5,10 +5,21 @@ const COLORS = ['Red', 'Blue', 'Green', 'Yellow', 'Black', 'White', 'Pink', 'Pur
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free'];
 
 export function VariantManager({ product, onSave, onCancel }) {
-  const [variants, setVariants] = useState(product.variants || []);
+  const normalize = (product.variants || []).map(v => ({
+    id: v.id,
+    _id: v._id || v.id || Date.now() + Math.random(),
+    color: v.color,
+    size: v.size,
+    designNumber: v.design_number || v.designNumber || '',
+    stock: Number(v.stock_quantity ?? v.stock ?? 0),
+    sku: v.sku_suffix || v.sku || '',
+    price: v.price_override ?? v.price ?? null
+  }));
+
+  const [variants, setVariants] = useState(normalize);
   const [showManualForm, setShowManualForm] = useState(false);
   const [showAutoForm, setShowAutoForm] = useState(false);
-  const [manualForm, setManualForm] = useState({ color: '', size: 'M', designNumber: '', stock: 0 });
+  const [manualForm, setManualForm] = useState({ color: '', size: 'M', designNumber: '', stock: 0, price: null });
   const [selectedColors, setSelectedColors] = useState([]);
   const [selectedSizes, setSelectedSizes] = useState([]);
 
@@ -38,6 +49,7 @@ export function VariantManager({ product, onSave, onCancel }) {
           size,
           designNumber: '',
           stock: 0,
+          price: null,
           sku: `${product.sku}-${color.substring(0, 2).toUpperCase()}-${size}`,
         });
       });
@@ -57,7 +69,16 @@ export function VariantManager({ product, onSave, onCancel }) {
   };
 
   const handleSave = () => {
-    onSave({ ...product, variants });
+    const payloadVariants = variants.map(v => ({
+      id: v.id,
+      color: v.color,
+      size: v.size,
+      designNumber: v.designNumber,
+      stock: v.stock,
+      sku: v.sku,
+      price_override: v.price ?? null
+    }));
+    onSave({ ...product, variants: payloadVariants });
   };
 
   const totalStock = variants.reduce((sum, v) => sum + Number(v.stock), 0);
@@ -134,7 +155,22 @@ export function VariantManager({ product, onSave, onCancel }) {
                 value={variant.stock}
                 onChange={e => handleUpdateVariant(variant._id, 'stock', Number(e.target.value))}
                 style={{
-                  width: 50,
+                  width: 60,
+                  padding: '4px 6px',
+                  border: '1px solid #d4a4c4',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  textAlign: 'right',
+                }}
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Price"
+                value={variant.price ?? ''}
+                onChange={e => handleUpdateVariant(variant._id, 'price', e.target.value === '' ? null : Number(e.target.value))}
+                style={{
+                  width: 90,
                   padding: '4px 6px',
                   border: '1px solid #d4a4c4',
                   borderRadius: 6,
@@ -222,6 +258,22 @@ export function VariantManager({ product, onSave, onCancel }) {
                 min="0"
                 value={manualForm.stock}
                 onChange={e => setManualForm({ ...manualForm, stock: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  border: '1px solid #d4a4c4',
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#666', display: 'block', marginBottom: 4 }}>Price</label>
+              <input
+                type="number"
+                min="0"
+                value={manualForm.price ?? ''}
+                onChange={e => setManualForm({ ...manualForm, price: e.target.value === '' ? null : Number(e.target.value) })}
                 style={{
                   width: '100%',
                   padding: '6px 8px',

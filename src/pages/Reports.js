@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Calendar,
   Download,
@@ -12,31 +12,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart as RePieChart, Pie, Cell
 } from 'recharts';
-
-const monthlySalesData = [
-  { month: 'Jan', sales: 285000, tax: 45600, returns: 12000 },
-  { month: 'Feb', sales: 310000, tax: 49600, returns: 8500 },
-  { month: 'Mar', sales: 350000, tax: 56000, returns: 15000 },
-  { month: 'Apr', sales: 295000, tax: 47200, returns: 10000 },
-  { month: 'May', sales: 420000, tax: 67200, returns: 18000 },
-  { month: 'Jun', sales: 380000, tax: 60800, returns: 14000 },
-];
-
-const categoryData = [
-  { name: 'Sarees', value: 35, color: '#6366f1' },
-  { name: 'Fabrics', value: 30, color: '#8b5cf6' },
-  { name: 'Dress Material', value: 15, color: '#06b6d4' },
-  { name: 'Accessories', value: 12, color: '#10b981' },
-  { name: 'Dupattas', value: 8, color: '#f59e0b' },
-];
-
-const taxBreakdown = [
-  { category: 'Silk & Sarees', gstRate: '12%', taxableValue: 850000, taxAmount: 102000, invoices: 156 },
-  { category: 'Cotton Fabrics', gstRate: '5%', taxableValue: 620000, taxAmount: 31000, invoices: 289 },
-  { category: 'Polyester & Blends', gstRate: '5%', taxableValue: 340000, taxAmount: 17000, invoices: 195 },
-  { category: 'Accessories & Zari', gstRate: '18%', taxableValue: 180000, taxAmount: 32400, invoices: 87 },
-  { category: 'Premium Materials', gstRate: '12%', taxableValue: 420000, taxAmount: 50400, invoices: 64 },
-];
+import { getBills, getProducts } from '../services/api';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -58,12 +34,134 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState('sales');
   const [fromDate, setFromDate] = useState('2024-01-01');
   const [toDate, setToDate] = useState('2024-06-30');
+  const [bills, setBills] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [billsData, productsData] = await Promise.all([
+          getBills(),
+          getProducts()
+        ]);
+        setBills(Array.isArray(billsData) ? billsData : []);
+        setProducts(Array.isArray(productsData) ? productsData : []);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Process real data for charts
+  const monthlySalesData = React.useMemo(() => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyData = {};
+    
+    bills.forEach(bill => {
+      const date = new Date(bill.bill_date || bill.created_at);
+      const monthKey = monthNames[date.getMonth()];
+      const total = Number(bill.total) || 0;
+      const tax = Number(bill.tax_amount) || 0;
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { sales: 0, tax: 0, returns: 0 };
+      }
+      monthlyData[monthKey].sales += total;
+      monthlyData[monthKey].tax += tax;
+    });
+    
+    return Object.entries(monthlyData).map(([month, data]) => ({
+      month,
+      sales: data.sales,
+      tax: data.tax,
+      returns: data.returns
+    }));
+  }, [bills]);
+
+  const categoryData = React.useMemo(() => {
+    const categoryCount = {};
+    const colors = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+    
+    bills.forEach(bill => {
+      if (bill.lineItems) {
+        bill.lineItems.forEach(item => {
+          const category = item.category || 'Other';
+          categoryCount[category] = (categoryCount[category] || 0) + 1;
+        });
+      }
+    });
+    
+    const total = Object.values(categoryCount).reduce((a, b) => a + b, 0);
+    return Object.entries(categoryCount).map(([name, value], index) => ({
+      name,
+      value: Math.round((value / total) * 100),
+      color: colors[index % colors.length]
+    }));
+  }, [bills]);
+
+  const taxBreakdown = React.useMemo(() => {
+    const categoryTax = {};
+    
+    bills.forEach(bill => {
+      if (bill.lineItems) {
+        bill.lineItems.forEach(item => {
+          const category = item.category || 'Other';
+          const taxRate = 5; // Default tax rate, can be enhanced
+          const taxableValue = Number(item.rate) * Number(item.quantity);
+          const taxAmount = taxableValue * (taxRate / 100);
+          
+          if (!categoryTax[category]) {
+            categoryTax[category] = { taxableValue: 0, taxAmount: 0, invoices: 0, gstRate: `${taxRate}%` };
+          }
+          categoryTax[category].taxableValue += taxableValue;
+          categoryTax[category].taxAmount += taxAmount;
+          categoryTax[category].invoices += 1;
+        });
+      }
+    });
+    
+    return Object.entries(categoryTax).map(([category, data]) => ({
+      category,
+      gstRate: data.gstRate,
+      taxableValue: data.taxableValue,
+      taxAmount: data.taxAmount,
+      invoices: data.invoices
+    }));
+  }, [bills]);
 
   const tabs = [
     { id: 'sales', label: 'Sales Reports', icon: TrendingUp },
     { id: 'tax', label: 'Tax Reports', icon: IndianRupee },
     { id: 'inventory', label: 'Inventory Reports', icon: Package },
   ];
+
+  // Calculate summary stats from real data
+  const summaryStats = React.useMemo(() => {
+    const totalRevenue = bills.reduce((sum, bill) => sum + (Number(bill.total) || 0), 0);
+    const totalInvoices = bills.length;
+    const avgInvoiceValue = totalInvoices > 0 ? totalRevenue / totalInvoices : 0;
+    const returnsValue = 0; // Can be calculated from returns API when available
+    
+    return {
+      totalRevenue,
+      totalInvoices,
+      avgInvoiceValue,
+      returnsValue
+    };
+  }, [bills]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-surface-400">Loading reports...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -116,10 +214,10 @@ export default function Reports() {
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Total Revenue', value: '₹20,40,000', change: '+18.2%', color: 'from-primary-500 to-primary-600', icon: IndianRupee },
-              { label: 'Total Invoices', value: '847', change: '+12.5%', color: 'from-emerald-500 to-emerald-600', icon: FileText },
-              { label: 'Avg. Invoice Value', value: '₹2,408', change: '+5.3%', color: 'from-violet-500 to-violet-600', icon: BarChart3 },
-              { label: 'Returns Value', value: '₹77,500', change: '-8.1%', color: 'from-amber-500 to-orange-500', icon: Package },
+              { label: 'Total Revenue', value: `₹${summaryStats.totalRevenue.toLocaleString('en-IN')}`, color: 'from-primary-500 to-primary-600', icon: IndianRupee },
+              { label: 'Total Invoices', value: summaryStats.totalInvoices, color: 'from-emerald-500 to-emerald-600', icon: FileText },
+              { label: 'Avg. Invoice Value', value: `₹${Math.round(summaryStats.avgInvoiceValue).toLocaleString('en-IN')}`, color: 'from-violet-500 to-violet-600', icon: BarChart3 },
+              { label: 'Returns Value', value: `₹${summaryStats.returnsValue.toLocaleString('en-IN')}`, color: 'from-amber-500 to-orange-500', icon: Package },
             ].map((card, i) => (
               <div key={i} className="stat-card !p-4">
                 <div className="flex items-center gap-3">
@@ -191,11 +289,16 @@ export default function Reports() {
       {activeTab === 'tax' && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { label: 'Total Tax Collected', value: '₹2,32,800', icon: IndianRupee },
-              { label: 'CGST', value: '₹1,16,400', icon: IndianRupee },
-              { label: 'SGST', value: '₹1,16,400', icon: IndianRupee },
-            ].map((card, i) => (
+            {(() => {
+              const totalTax = bills.reduce((sum, bill) => sum + (Number(bill.tax_amount) || 0), 0);
+              const cgst = totalTax / 2;
+              const sgst = totalTax / 2;
+              return [
+                { label: 'Total Tax Collected', value: `₹${totalTax.toLocaleString('en-IN')}`, icon: IndianRupee },
+                { label: 'CGST', value: `₹${cgst.toLocaleString('en-IN')}`, icon: IndianRupee },
+                { label: 'SGST', value: `₹${sgst.toLocaleString('en-IN')}`, icon: IndianRupee },
+              ];
+            })().map((card, i) => (
               <div key={i} className="stat-card !p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">

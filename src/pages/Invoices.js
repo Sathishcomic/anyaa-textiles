@@ -14,8 +14,8 @@ export default function Invoices() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await getBills();
-      setInvoices([...res.data].reverse());
+      const bills = await getBills();
+      setInvoices(Array.isArray(bills) ? [...bills].reverse() : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -23,25 +23,30 @@ export default function Invoices() {
   useEffect(() => { load(); }, [load]);
 
   const filtered = invoices.filter(inv => {
+    const invoiceId = String(inv.bill_number || inv.id || '');
+    const customer = String(inv.customer_name || inv.customer || '');
+    const phone = String(inv.customer_phone || inv.phone || '');
+    const payment = String(inv.payment_method || inv.payment || '');
+
     const matchSearch =
-      (inv.id || '').toLowerCase().includes(search.toLowerCase()) ||
-      (inv.customer || '').toLowerCase().includes(search.toLowerCase()) ||
-      (inv.phone || '').includes(search);
-    const matchPay = filterPay === 'All' || inv.payment === filterPay;
+      invoiceId.toLowerCase().includes(search.toLowerCase()) ||
+      customer.toLowerCase().includes(search.toLowerCase()) ||
+      phone.includes(search);
+    const matchPay = filterPay === 'All' || payment === filterPay;
     return matchSearch && matchPay;
   });
 
-  const totalAmount = filtered.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const totalAmount = filtered.reduce((s, i) => s + (Number(i.total || i.amount) || 0), 0);
 
   /* Build full inv object for InvoiceView */
   const buildViewObj = (inv) => ({
-    invoiceId   : inv.id,
-    date        : inv.date || 'N/A',
-    customer    : inv.customer,
-    phone       : inv.phone || '',
+    invoiceId   : inv.bill_number || inv.id,
+    date        : inv.bill_date || inv.date || 'N/A',
+    customer    : inv.customer_name || inv.customer,
+    phone       : inv.customer_phone || inv.phone || '',
     lineItems   : inv.lineItems || [],
-    paymentMethod: inv.payment,
-    grandTotal  : inv.amount,
+    paymentMethod: inv.payment_method || inv.payment,
+    grandTotal  : inv.total || inv.amount,
   });
 
   const handleWhatsApp = (inv) => {
@@ -49,7 +54,7 @@ export default function Invoices() {
     const lines = li.length
       ? li.map(it => `• ${it.name} x${it.qty} @ ₹${Number(it.rate).toLocaleString('en-IN')} = ₹${(it.qty * Number(it.rate)).toLocaleString('en-IN')}`).join('\n')
       : `Total items: ${inv.items}`;
-    const msg = `🌸 *Anyaa Textiles* 🌸\nInvoice: *${inv.id}*\nDate: ${inv.date || ''}\nCustomer: ${inv.customer}\n\n${lines}\n\n*Total: ₹${Number(inv.amount).toLocaleString('en-IN')}*\nPayment: ${inv.payment}\n\nThank you for shopping! 💐`;
+    const msg = `🌸 *Anyaa Textiles* 🌸\nInvoice: *${inv.bill_number || inv.id}*\nDate: ${inv.bill_date || inv.date || ''}\nCustomer: ${inv.customer_name || inv.customer}\n\n${lines}\n\n*Total: ₹${Number(inv.total || inv.amount).toLocaleString('en-IN')}*\nPayment: ${inv.payment_method || inv.payment}\n\nThank you for shopping! 💐`;
     const ph = (inv.phone || '').replace(/\D/g, '');
     window.open(ph ? `https://wa.me/91${ph}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -207,9 +212,9 @@ export default function Invoices() {
           <div className="inv-stat">
             <div className="inv-stat-label">Cash / UPI / Card</div>
             <div className="inv-stat-val" style={{ fontSize: 16, paddingTop: 4 }}>
-              {filtered.filter(i => i.payment === 'Cash').length} /&nbsp;
-              {filtered.filter(i => i.payment === 'UPI').length} /&nbsp;
-              {filtered.filter(i => i.payment === 'Card').length}
+              {filtered.filter(i => (i.payment_method || i.payment) === 'Cash').length} /&nbsp;
+              {filtered.filter(i => (i.payment_method || i.payment) === 'UPI').length} /&nbsp;
+              {filtered.filter(i => (i.payment_method || i.payment) === 'Card').length}
             </div>
           </div>
         </div>
@@ -251,16 +256,16 @@ export default function Invoices() {
                   <tr><td colSpan={7} className="inv-empty">No invoices found.</td></tr>
                 ) : filtered.map(inv => (
                   <tr key={inv.id}>
-                    <td><span className="inv-id">{inv.id}</span></td>
+                    <td><span className="inv-id">{inv.bill_number || inv.id}</span></td>
                     <td>
-                      <div className="inv-cust">{inv.customer}</div>
-                      {inv.phone && <div className="inv-phone">📞 {inv.phone}</div>}
+                      <div className="inv-cust">{inv.customer_name || inv.customer}</div>
+                      {(inv.customer_phone || inv.phone) && <div className="inv-phone">📞 {inv.customer_phone || inv.phone}</div>}
                     </td>
-                    <td style={{ fontSize: 12, color: '#888' }}>{inv.date || inv.time || '—'}</td>
-                    <td style={{ textAlign: 'center', color: '#888', fontSize: 13 }}>{inv.items}</td>
-                    <td style={{ textAlign: 'right' }}><span className="inv-amt">₹{Number(inv.amount).toLocaleString('en-IN')}</span></td>
+                    <td style={{ fontSize: 12, color: '#888' }}>{inv.bill_date || inv.date || '—'}</td>
+                    <td style={{ textAlign: 'center', color: '#888', fontSize: 13 }}>{inv.items_count || inv.items || '—'}</td>
+                    <td style={{ textAlign: 'right' }}><span className="inv-amt">₹{Number(inv.total || inv.amount).toLocaleString('en-IN')}</span></td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className={`pay-badge ${PAY_COLORS[inv.payment] || 'inv-pay-cash'}`}>{inv.payment}</span>
+                      <span className={`pay-badge ${PAY_COLORS[inv.payment_method || inv.payment] || 'inv-pay-cash'}`}>{inv.payment_method || inv.payment}</span>
                     </td>
                     <td>
                       <div className="action-cell">

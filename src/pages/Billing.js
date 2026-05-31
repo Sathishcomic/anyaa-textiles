@@ -7,7 +7,9 @@ const CATS  = ['Kurti','Saree','Leggings','Tops','Nighty','Chudithar','Other'];
 const LS    = 'anyaa_billing_draft';
 
 function genInv() {
-  return `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.floor(100 + Math.random() * 900);
+  return `INV-${new Date().getFullYear()}-${timestamp}-${random}`;
 }
 
 function now() {
@@ -34,10 +36,21 @@ function ProductSearchCell({ value, products, onSelect, onChange }) {
   const ref = useRef();
 
   const filtered = useMemo(() =>
-    products.filter(p =>
-      p.name.toLowerCase().includes(value.toLowerCase()) ||
-      (p.sku || '').toLowerCase().includes(value.toLowerCase())
-    ).slice(0, 8),
+    products.filter(p => {
+      const q = (value || '').toLowerCase();
+      if ((p.name || '').toLowerCase().includes(q)) return true;
+      if ((p.sku || '').toLowerCase().includes(q)) return true;
+      if ((p.category || '').toLowerCase().includes(q)) return true;
+      if (Array.isArray(p.variants) && p.variants.some(v => (
+        (v.color || '').toLowerCase().includes(q) ||
+        (v.size || '').toLowerCase().includes(q) ||
+        (v.designNumber || '').toLowerCase().includes(q) ||
+        (v.design || '').toLowerCase().includes(q) ||
+        (v.sku || '').toLowerCase().includes(q) ||
+        (v.sku_suffix || '').toLowerCase().includes(q)
+      ))) return true;
+      return false;
+    }).slice(0, 8),
   [products, value]);
 
   useEffect(() => {
@@ -217,11 +230,27 @@ export default function Billing() {
   const [discountPercent, setDiscountPercent] = useState(draft.discountPercent || 0);
   const [taxRate,   setTaxRate]       = useState(draft.taxRate      || 5);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
-    getCustomers().then(r => setCustomers(r.data)).catch(() => {});
-    getProducts().then(r => setProducts(r.data)).catch(() => {});
+    (async () => {
+      try {
+        const custs = await getCustomers();
+        setCustomers(Array.isArray(custs) ? custs : []);
+      } catch (e) { console.error('Failed to load customers', e); }
+      try {
+        const prods = await getProducts();
+        setProducts(Array.isArray(prods) ? prods : []);
+      } catch (e) { console.error('Failed to load products', e); }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      addBlankRow();
+    }
   }, []);
 
   /* auto-save draft to localStorage on every billing state change */
@@ -241,13 +270,42 @@ export default function Billing() {
   /* ── row helpers ── */
   const addBlankRow = () => setRows(p => [...p, { _uid: Date.now(), name: '', category: '', size: 'M', rate: '', qty: 1 }]);
 
+  /* ── keyboard shortcuts ── */
+  const hasValidItem = rows.some(r => r.name && r.name.trim() !== '' && Number(r.qty) > 0);
+  
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        addBlankRow();
+      }
+      if (e.key === 'Enter' && e.ctrlKey && hasValidItem) {
+        e.preventDefault();
+        handleGenerate();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [hasValidItem]);
+
   const updateRow = useCallback((uid, field, val) => {
     setRows(p => p.map(r => r._uid === uid ? { ...r, [field]: val } : r));
   }, []);
 
   const selectProduct = useCallback((uid, prod) => {
+    const basePrice = prod.price ?? prod.price_override ?? '';
     setRows(p => p.map(r => r._uid === uid
-      ? { ...r, name: prod.name, category: prod.category || '', size: prod.size || 'M', rate: prod.price || '', _productId: prod.id }
+      ? {
+          ...r,
+          name: prod.name,
+          category: prod.category || '',
+          size: prod.size || 'M',
+          rate: basePrice,
+          _productId: prod.id,
+          _basePrice: basePrice,
+          variants: Array.isArray(prod.variants) ? prod.variants : [],
+          _variantId: null
+        }
       : r
     ));
   }, []);
@@ -255,8 +313,6 @@ export default function Billing() {
   const removeRow = useCallback((uid) => setRows(p => p.filter(r => r._uid !== uid)), []);
 
   /* ── totals ── */
-  const hasValidItem = rows.some(r => r.name && r.name.trim() !== '');
-  
   const subtotal = useMemo(() =>
     Math.round(rows.reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0)),
   [rows]);
@@ -276,8 +332,8 @@ export default function Billing() {
   const totalQty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
   /* ── build invoice object ── */
-  const buildInvoice = () => ({
-    invoiceId,
+  const buildInvoice = (overrideInvoiceId) => ({
+    invoiceId: overrideInvoiceId || invoiceId,
     date: now(),
     customer: custName || 'Walk-in Customer',
     phone: custPhone,
@@ -294,48 +350,71 @@ export default function Billing() {
 
   /* ── save to DB + deduct stock ── */
   const saveToDB = async (inv) => {
-    try {
-      await addBill({
-        id: inv.invoiceId,
-        customer: inv.customer,
-        phone: inv.phone,
-        amount: inv.grandTotal,
-        items: totalQty,
-        time: 'Just now',
-        status: 'completed',
-        payment: inv.paymentMethod,
-        date: inv.date,
-        lineItems: inv.lineItems,
-        subtotal: inv.subtotal,
-        discountFlat: inv.discountFlat,
-        discountPercent: inv.discountPercent,
-        taxRate: inv.taxRate,
-        taxAmount: inv.taxAmount,
-      });
+    if (!inv.lineItems || inv.lineItems.length === 0) {
+      throw new Error('No line items to save');
+    }
 
-      // Deduct stock for each line item that has a known product
-      const validRows = rows.filter(r => r._productId && r.name && Number(r.qty) > 0);
-      const currentProducts = await getProducts();
-      const prodMap = {};
-      (currentProducts.data || []).forEach(p => { prodMap[p.id] = p; });
+    const payload = {
+      bill_number: inv.invoiceId,
+      customer_id: selCustId || null,
+      customer_name: inv.customer,
+      customer_phone: inv.phone || null,
+      subtotal: inv.subtotal,
+      tax_amount: inv.taxAmount || 0,
+      discount_flat: inv.discountFlat || 0,
+      discount_percent: inv.discountPercent || 0,
+      total: inv.grandTotal,
+      payment_method: inv.paymentMethod,
+      payment_status: 'completed',
+      lineItems: inv.lineItems.map(it => ({
+        product_id: it._productId || null,
+        name: it.name,
+        category: it.category || null,
+        size: it.size || null,
+        quantity: Number(it.qty) || 0,
+        rate: Number(it.rate) || 0
+      }))
+    };
 
-      await Promise.all(
-        validRows.map(row => {
-          const prod = prodMap[row._productId];
-          if (!prod) return null;
-          const newStock = Math.max(0, Number(prod.stock ?? prod.available ?? 0) - Number(row.qty));
-          return updateProduct(prod.id, { ...prod, stock: newStock });
-        }).filter(Boolean)
-      );
-    } catch (e) { console.error(e); }
+    console.log('Saving bill with payload:', payload);
+    const response = await addBill(payload);
+    console.log('Bill saved successfully:', response);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
+    return response;
   };
 
   /* ── handlers ── */
-  const handleGenerate = () => { if (hasValidItem) setShowInvoice(true); };
+  const handleGenerate = async () => {
+    if (!hasValidItem) {
+      alert('Please add at least one product row with a valid quantity.');
+      return;
+    }
+    if (saving) {
+      return;
+    }
+
+    const nextInvoiceId = autoInv ? genInv() : invoiceId;
+    if (autoInv) {
+      setInvoiceId(nextInvoiceId);
+    }
+
+    const inv = buildInvoice(nextInvoiceId);
+    setInvoiceData(inv);
+    setSaving(true);
+
+    try {
+      await saveToDB(inv);
+      setShowInvoice(true);
+    } catch (e) {
+      alert(`Invoice save failed: ${e.message || 'Please try again.'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleWhatsApp = async () => {
     const inv = buildInvoice();
-    await saveToDB(inv);
     const lines = inv.lineItems.map(it =>
       `• ${it.name} (${it.category} | ${it.size}) x${it.qty} @ ₹${Number(it.rate).toLocaleString('en-IN')} = ₹${(it.qty * Number(it.rate)).toLocaleString('en-IN')}`
     ).join('\n');
@@ -346,7 +425,6 @@ export default function Billing() {
   };
 
   const handlePrint = async () => {
-    await saveToDB(buildInvoice());
     window.print();
     finalize();
   };
@@ -361,6 +439,13 @@ export default function Billing() {
       setCustMode('walkin');
       setCustPhone('');
       setInvoiceId(genInv());
+      // Reload products to update stock after bill save
+      (async () => {
+        try {
+          const prods = await getProducts();
+          setProducts(Array.isArray(prods) ? prods : []);
+        } catch (e) { console.error('Failed to reload products', e); }
+      })();
     }, 2000);
   };
 
@@ -694,9 +779,44 @@ export default function Billing() {
                       </select>
                     </td>
                     <td>
-                      <select className="tbl-select" value={row.size} onChange={e => updateRow(row._uid, 'size', e.target.value)}>
-                        {SIZES.map(s => <option key={s}>{s}</option>)}
-                      </select>
+                      {Array.isArray(row.variants) && row.variants.length > 0 ? (
+                        <select
+                          className="tbl-select"
+                          value={row._variantId || ''}
+                          onChange={e => {
+                            const vid = e.target.value;
+                            const v = row.variants.find(x => String(x.id || x._id) === String(vid));
+                            if (v) {
+                              updateRow(row._uid, '_variantId', v.id || v._id);
+                              // Use variant price if available, otherwise fall back to base price
+                              const variantPrice = v.price_override ?? v.price ?? null;
+                              if (variantPrice !== null && variantPrice !== undefined) {
+                                updateRow(row._uid, 'rate', variantPrice);
+                              }
+                              updateRow(row._uid, 'size', v.size || row.size);
+                              updateRow(row._uid, 'color', v.color || '');
+                            } else {
+                              updateRow(row._uid, '_variantId', null);
+                              // Reset to base price when no variant selected
+                              updateRow(row._uid, 'rate', row._basePrice || row.rate);
+                            }
+                          }}
+                        >
+                          <option value="">— Select Variant —</option>
+                          {row.variants.map(v => {
+                            const variantPrice = v.price_override ?? v.price ?? null;
+                            return (
+                              <option key={v.id || v._id} value={v.id || v._id}>
+                                {`${v.color || '-'} / ${v.size || '-'}${v.design ? ' / '+v.design : ''} ${variantPrice ? '· ₹'+variantPrice : ''} ${v.sku ? '· '+v.sku : ''} · ${Number(v.stock_quantity||v.stock||0)} left`}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      ) : (
+                        <select className="tbl-select" value={row.size} onChange={e => updateRow(row._uid, 'size', e.target.value)}>
+                          {SIZES.map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td>
                       <input
@@ -788,8 +908,8 @@ export default function Billing() {
             </div>
             <div className="action-group">
               <button className="btn-clear" onClick={() => { setRows([]); setDiscountFlat(0); setDiscountPercent(0); }}>Clear</button>
-              <button className="btn-generate" onClick={handleGenerate} disabled={!hasValidItem}>
-                🧾 Generate Invoice
+              <button className="btn-generate" onClick={handleGenerate} disabled={!hasValidItem || saving}>
+                {saving ? 'Saving...' : '🧾 Generate Invoice'}
               </button>
             </div>
           </div>
@@ -818,7 +938,7 @@ export default function Billing() {
               </button>
               <button className="inv-btn btn-x" onClick={() => setShowInvoice(false)}>✕ Close</button>
             </div>
-            <InvoiceView inv={buildInvoice()} />
+            <InvoiceView inv={invoiceData || buildInvoice()} />
           </div>
         </div>
       )}

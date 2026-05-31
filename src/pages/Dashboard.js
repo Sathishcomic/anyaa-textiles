@@ -33,9 +33,21 @@ export default function Dashboard() {
           getBills(),
           getProducts()
         ]);
-        setStats(statsRes.data);
-        setBills(billsRes.data.slice(0, 6)); // recent 6 bills
-        setProducts(productsRes.data.filter(p => p.stock <= p.minStock).slice(0, 3));
+        const statsData = statsRes || {};
+        const billsData = billsRes || [];
+        const productsData = productsRes || [];
+
+        setStats(statsData);
+        // normalize bills to expected frontend keys
+        setBills(billsData.slice(0, 6).map(b => ({
+          id: b.id || b.bill_number,
+          customer: b.customer_name || b.customer || '',
+          items: b.items_count || b.items || 0,
+          amount: b.total || b.amount || b.subtotal || 0,
+          payment: b.payment_method || b.payment || 'Unknown',
+          status: b.payment_status || b.status || 'pending'
+        })));
+        setProducts((productsData || []).filter(p => Number(p.stock ?? p.available ?? 0) <= Number(p.min_stock ?? p.minStock ?? 0)).slice(0, 3));
       } catch (error) {
         console.error("Error loading dashboard data:", error);
       }
@@ -45,12 +57,13 @@ export default function Dashboard() {
 
   if (!stats) return <div className="p-8 text-center text-gray-500">Loading dashboard data...</div>;
 
+  const format = (v) => Number(v ?? 0).toLocaleString('en-IN');
   const topCards = [
-    { title: 'Today Sales', value: `₹${stats.todaySales.toLocaleString('en-IN')}`, sub: `+${stats.todaySalesGrowth}% vs yesterday`, icon: IndianRupee, bg: 'bg-pink-400', text: 'text-emerald-500' },
-    { title: 'Total Bills', value: stats.totalBills, sub: `+${stats.totalBillsGrowth} more than yesterday`, icon: Receipt, bg: 'bg-indigo-300', text: 'text-emerald-500' },
-    { title: 'Cash Sales', value: `₹${stats.cashSales.toLocaleString('en-IN')}`, sub: `+${stats.cashSalesGrowth}% vs yesterday`, icon: Wallet, bg: 'bg-emerald-400', text: 'text-emerald-500' },
-    { title: 'UPI Sales', value: `₹${stats.upiSales.toLocaleString('en-IN')}`, sub: `+${stats.upiSalesGrowth}% vs yesterday`, icon: CreditCard, bg: 'bg-blue-400', text: 'text-emerald-500' },
-    { title: 'Stock Items', value: stats.stockItems, sub: `${stats.lowStockAlerts} low stock alerts`, icon: Package, bg: 'bg-amber-400', text: 'text-rose-500' }
+    { title: 'Today Sales', value: `₹${format(stats.todaySales)}`, sub: `+${stats.todaySalesGrowth ?? 0}% vs yesterday`, icon: IndianRupee, bg: 'bg-pink-400', text: 'text-emerald-500' },
+    { title: 'Total Bills', value: stats.totalBills ?? 0, sub: `+${stats.totalBillsGrowth ?? 0} more than yesterday`, icon: Receipt, bg: 'bg-indigo-300', text: 'text-emerald-500' },
+    { title: 'Cash Sales', value: `₹${format(stats.cashSales)}`, sub: `+${stats.cashSalesGrowth ?? 0}% vs yesterday`, icon: Wallet, bg: 'bg-emerald-400', text: 'text-emerald-500' },
+    { title: 'UPI Sales', value: `₹${format(stats.upiSales)}`, sub: `+${stats.upiSalesGrowth ?? 0}% vs yesterday`, icon: CreditCard, bg: 'bg-blue-400', text: 'text-emerald-500' },
+    { title: 'Stock Items', value: stats.stockItems ?? 0, sub: `${stats.lowStockAlerts ?? 0} low stock alerts`, icon: Package, bg: 'bg-amber-400', text: 'text-rose-500' }
   ];
 
   const quickActions = [
@@ -114,7 +127,7 @@ export default function Dashboard() {
                     <td className="py-4 px-2 text-pink-400 font-medium">{bill.id}</td>
                     <td className="py-4 text-gray-700">{bill.customer}</td>
                     <td className="py-4 text-gray-600">{bill.items} items</td>
-                    <td className="py-4 font-bold text-gray-800">₹{bill.amount.toLocaleString('en-IN')}</td>
+                    <td className="py-4 font-bold text-gray-800">₹{Number(bill.amount || 0).toLocaleString('en-IN')}</td>
                     <td className="py-4">
                       <span className="text-[10px] font-bold px-2 py-1 rounded-full text-emerald-600 border border-emerald-200 uppercase tracking-wider">
                         {bill.payment}
@@ -214,14 +227,14 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <div className="flex items-end justify-between mb-8">
+              <div className="flex items-end justify-between mb-8">
             <div>
               <p className="text-xs text-gray-400 mb-1">This Week</p>
-              <p className="text-xl font-bold text-gray-800">₹{stats.weekTotal.toLocaleString('en-IN')}</p>
+              <p className="text-xl font-bold text-gray-800">₹{format(stats.weekTotal)}</p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-1">Last Week</p>
-              <p className="text-xl font-bold text-gray-400">₹{stats.lastWeekTotal.toLocaleString('en-IN')}</p>
+              <p className="text-xl font-bold text-gray-400">₹{format(stats.lastWeekTotal)}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-400 mb-1">Growth</p>
@@ -236,10 +249,11 @@ export default function Dashboard() {
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
                   content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
+                    const value = payload && payload[0] && payload[0].value;
+                    if (active && value != null) {
                       return (
                         <div className="bg-gray-800 text-white text-xs px-2 py-1 rounded">
-                          ₹{payload[0].value.toLocaleString('en-IN')}
+                          ₹{Number(value).toLocaleString('en-IN')}
                         </div>
                       );
                     }
@@ -247,8 +261,8 @@ export default function Dashboard() {
                   }}
                 />
                 <Bar dataKey="sales" radius={[4, 4, 4, 4]}>
-                  {stats.weeklySales.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === stats.weeklySales.length - 1 ? '#fb7185' : '#c7d2fe'} />
+                  {(stats.weeklySales || []).map((entry, index, arr) => (
+                    <Cell key={`cell-${index}`} fill={index === arr.length - 1 ? '#fb7185' : '#c7d2fe'} />
                   ))}
                 </Bar>
               </BarChart>

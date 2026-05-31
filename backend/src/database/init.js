@@ -1,26 +1,13 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const db = require('./db');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, '..', '..', 'data', 'anyaa.db');
-const dataDir = path.join(__dirname, '..', '..', 'data');
+const run = db.run;
+const get = db.get;
+const all = db.all;
 
-// Create data directory if it doesn't exist
-const fs = require('fs');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Initialize database
-const db = new Database(dbPath);
-
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
-
-// Create tables
-const createTables = () => {
+async function createTables() {
   // Users table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
@@ -34,7 +21,7 @@ const createTables = () => {
   `);
 
   // Products table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sku TEXT UNIQUE NOT NULL,
@@ -51,7 +38,7 @@ const createTables = () => {
   `);
 
   // Product Variants table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS product_variants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
@@ -60,13 +47,21 @@ const createTables = () => {
       design_number TEXT,
       sku_suffix TEXT,
       stock_quantity INTEGER DEFAULT 0,
+      price_override REAL DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     )
   `);
 
+  // Ensure older databases get the price_override column
+  try {
+    await run('ALTER TABLE product_variants ADD COLUMN price_override REAL DEFAULT NULL');
+  } catch (e) {
+    // ignore if column already exists
+  }
+
   // Customers table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -84,7 +79,7 @@ const createTables = () => {
   `);
 
   // Bills table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_number TEXT UNIQUE NOT NULL,
@@ -106,7 +101,7 @@ const createTables = () => {
   `);
 
   // Bill Items table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS bill_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_id INTEGER NOT NULL,
@@ -124,7 +119,7 @@ const createTables = () => {
   `);
 
   // Returns table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS returns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice TEXT NOT NULL,
@@ -141,7 +136,7 @@ const createTables = () => {
   `);
 
   // Settings table
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       business_name TEXT DEFAULT 'Anyaa Textiles',
@@ -156,7 +151,7 @@ const createTables = () => {
   `);
 
   // Roles table (for future multi-role support)
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -166,7 +161,7 @@ const createTables = () => {
   `);
 
   // Staff table (for future HR module)
-  db.exec(`
+  await run(`
     CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -178,96 +173,69 @@ const createTables = () => {
   `);
 
   console.log('✅ All tables created successfully');
-};
+}
 
-// Insert default data
-const insertDefaultData = () => {
+async function insertDefaultData() {
   // Insert default users
   const hashedPassword = bcrypt.hashSync('admin', 10);
-  const insertUser = db.prepare(`
-    INSERT OR IGNORE INTO users (email, password, name, role)
-    VALUES (?, ?, ?, ?)
-  `);
-  
-  insertUser.run('admin@anyaa.com', hashedPassword, 'Admin User', 'Admin');
-  
+  await run(`INSERT OR IGNORE INTO users (email, password, name, role) VALUES (?, ?, ?, ?)`, ['admin@anyaa.com', hashedPassword, 'Admin User', 'Admin']);
   const salesPassword = bcrypt.hashSync('sales', 10);
-  insertUser.run('sales@anyaa.com', salesPassword, 'Sales User', 'Sales');
-  
+  await run(`INSERT OR IGNORE INTO users (email, password, name, role) VALUES (?, ?, ?, ?)`, ['sales@anyaa.com', salesPassword, 'Sales User', 'Sales']);
   const accountsPassword = bcrypt.hashSync('accounts', 10);
-  insertUser.run('accounts@anyaa.com', accountsPassword, 'Accounts User', 'Accounts');
-
+  await run(`INSERT OR IGNORE INTO users (email, password, name, role) VALUES (?, ?, ?, ?)`, ['accounts@anyaa.com', accountsPassword, 'Accounts User', 'Accounts']);
   console.log('✅ Default users inserted');
 
   // Insert default products
-  const insertProduct = db.prepare(`
-    INSERT OR IGNORE INTO products (sku, name, category, price, stock, min_stock, unit, tax_rate)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
-  insertProduct.run('KU-104', 'Pink Floral Kurti', 'Kurti', 1250, 2, 5, 'pieces', 5);
-  insertProduct.run('SA-212', 'Silk Saree - Navy Blue', 'Saree', 4500, 1, 3, 'pieces', 12);
-  insertProduct.run('LG-045', 'Cotton Leggings - XL', 'Leggings', 450, 4, 10, 'pieces', 5);
-
+  await run(`INSERT OR IGNORE INTO products (sku, name, category, price, stock, min_stock, unit, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['KU-104', 'Pink Floral Kurti', 'Kurti', 1250, 2, 5, 'pieces', 5]);
+  await run(`INSERT OR IGNORE INTO products (sku, name, category, price, stock, min_stock, unit, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['SA-212', 'Silk Saree - Navy Blue', 'Saree', 4500, 1, 3, 'pieces', 12]);
+  await run(`INSERT OR IGNORE INTO products (sku, name, category, price, stock, min_stock, unit, tax_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, ['LG-045', 'Cotton Leggings - XL', 'Leggings', 450, 4, 10, 'pieces', 5]);
   console.log('✅ Default products inserted');
 
   // Insert default customers
-  const insertCustomer = db.prepare(`
-    INSERT OR IGNORE INTO customers (name, phone, email, total_purchases, due)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  
-  insertCustomer.run('Priya S.', '9876543210', 'priya@example.com', 12450, 0);
-  insertCustomer.run('Meena R.', '9876543211', 'meena@example.com', 850, 0);
-  insertCustomer.run('Phoenix', '85522666', 'phoen@gmail.com', 0, 0);
-
+  await run(`INSERT OR IGNORE INTO customers (name, phone, email, total_purchases, due) VALUES (?, ?, ?, ?, ?)`, ['Priya S.', '9876543210', 'priya@example.com', 12450, 0]);
+  await run(`INSERT OR IGNORE INTO customers (name, phone, email, total_purchases, due) VALUES (?, ?, ?, ?, ?)`, ['Meena R.', '9876543211', 'meena@example.com', 850, 0]);
+  await run(`INSERT OR IGNORE INTO customers (name, phone, email, total_purchases, due) VALUES (?, ?, ?, ?, ?)`, ['Phoenix', '85522666', 'phoen@gmail.com', 0, 0]);
   console.log('✅ Default customers inserted');
 
   // Insert default settings
-  const insertSettings = db.prepare(`
-    INSERT OR IGNORE INTO settings (id, business_name, phone, address, currency, tax_default)
-    VALUES (1, ?, ?, ?, ?, ?)
-  `);
-  
-  insertSettings.run('Anyaa Textiles', '+91 9876543210', '123 Textile Market, City', 'INR', 5);
-
+  await run(`INSERT OR IGNORE INTO settings (id, business_name, phone, address, currency, tax_default) VALUES (1, ?, ?, ?, ?, ?)`, ['Anyaa Textiles', '+91 9876543210', '123 Textile Market, City', 'INR', 5]);
   console.log('✅ Default settings inserted');
 
   // Insert default roles
-  const insertRole = db.prepare(`
-    INSERT OR IGNORE INTO roles (name, permissions)
-    VALUES (?, ?)
-  `);
-  
-  insertRole.run('Admin', JSON.stringify(['view_all', 'edit_all', 'delete_all', 'user_mgmt']));
-  insertRole.run('Manager', JSON.stringify(['view_all', 'edit_sales', 'approve_discount']));
-  insertRole.run('Cashier', JSON.stringify(['view_billing', 'create_bill', 'view_stock']));
-  insertRole.run('Staff', JSON.stringify(['view_billing', 'view_stock']));
-
+  await run(`INSERT OR IGNORE INTO roles (name, permissions) VALUES (?, ?)`, ['Admin', JSON.stringify(['view_all', 'edit_all', 'delete_all', 'user_mgmt'])]);
+  await run(`INSERT OR IGNORE INTO roles (name, permissions) VALUES (?, ?)`, ['Manager', JSON.stringify(['view_all', 'edit_sales', 'approve_discount'])]);
+  await run(`INSERT OR IGNORE INTO roles (name, permissions) VALUES (?, ?)`, ['Cashier', JSON.stringify(['view_billing', 'create_bill', 'view_stock'])]);
+  await run(`INSERT OR IGNORE INTO roles (name, permissions) VALUES (?, ?)`, ['Staff', JSON.stringify(['view_billing', 'view_stock'])]);
   console.log('✅ Default roles inserted');
-};
+}
 
-// Create indexes for better performance
-const createIndexes = () => {
-  db.exec('CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_bills_bill_number ON bills(bill_number)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_bills_customer_id ON bills(customer_id)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_bills_bill_date ON bills(bill_date)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_bill_items_bill_id ON bill_items(bill_id)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_returns_invoice ON returns(invoice)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
-  
+async function createIndexes() {
+  await run('CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)');
+  await run('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
+  await run('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
+  await run('CREATE INDEX IF NOT EXISTS idx_bills_bill_number ON bills(bill_number)');
+  await run('CREATE INDEX IF NOT EXISTS idx_bills_customer_id ON bills(customer_id)');
+  await run('CREATE INDEX IF NOT EXISTS idx_bills_bill_date ON bills(bill_date)');
+  await run('CREATE INDEX IF NOT EXISTS idx_bill_items_bill_id ON bill_items(bill_id)');
+  await run('CREATE INDEX IF NOT EXISTS idx_returns_invoice ON returns(invoice)');
+  await run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
   console.log('✅ Indexes created successfully');
-};
+}
 
-// Run initialization
-console.log('🚀 Initializing database...');
-createTables();
-insertDefaultData();
-createIndexes();
-console.log('✅ Database initialization completed successfully!');
-console.log(`📁 Database location: ${dbPath}`);
+async function init() {
+  try {
+    console.log('🚀 Initializing database...');
+    await createTables();
+    await insertDefaultData();
+    await createIndexes();
+    console.log('✅ Database initialization completed successfully!');
+    console.log(`📁 Database location: ${db.path}`);
+  } catch (err) {
+    console.error('Database initialization failed:', err);
+    process.exit(1);
+  } finally {
+    await db.close();
+  }
+}
 
-db.close();
+init();

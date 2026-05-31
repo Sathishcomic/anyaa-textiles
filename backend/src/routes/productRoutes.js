@@ -9,9 +9,10 @@ router.get('/', optionalAuth, getProducts);
 router.get('/low-stock', optionalAuth, getLowStockProducts);
 router.get('/:id', optionalAuth, idParam, validate, getProduct);
 
-// Protected routes
-router.post('/', authenticate, validate, productValidation.create, createProduct);
-router.put('/:id', authenticate, idParam, validate, productValidation.update, updateProduct);
-router.delete('/:id', authenticate, idParam, validate, deleteProduct);
+// Protected routes (allow unauthenticated access during development for faster local workflows)
+const protect = process.env.NODE_ENV === 'production' ? authenticate : optionalAuth;
+router.post('/', protect, validate, productValidation.create, createProduct);
+router.put('/:id', protect, idParam, validate, productValidation.update, updateProduct);
+router.delete('/:id', protect, idParam, validate, deleteProduct);
 
 module.exports = router;

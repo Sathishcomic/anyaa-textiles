@@ -22,9 +22,9 @@ export default function ReturnExchange() {
   const loadAll = async () => {
     try {
       const [retRes, billRes, prodRes] = await Promise.all([getReturns(), getBills(), getProducts()]);
-      setRequests(retRes.data);
-      setBills([...billRes.data].reverse());
-      setProducts(prodRes.data);
+      setRequests(Array.isArray(retRes) ? retRes : []);
+      setBills(Array.isArray(billRes) ? [...billRes].reverse() : []);
+      setProducts(Array.isArray(prodRes) ? prodRes : []);
     } catch (e) { console.error(e); }
   };
 

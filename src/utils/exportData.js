@@ -12,16 +12,16 @@ export const exportAllData = async () => {
 
     const wb = XLSX.utils.book_new();
 
-    const wsProducts = XLSX.utils.json_to_sheet(productsRes.data);
+    const wsProducts = XLSX.utils.json_to_sheet(productsRes?.data?.data || []);
     XLSX.utils.book_append_sheet(wb, wsProducts, "Products");
 
-    const wsCustomers = XLSX.utils.json_to_sheet(customersRes.data);
+    const wsCustomers = XLSX.utils.json_to_sheet(customersRes?.data?.data || []);
     XLSX.utils.book_append_sheet(wb, wsCustomers, "Customers");
 
-    const wsBills = XLSX.utils.json_to_sheet(billsRes.data);
+    const wsBills = XLSX.utils.json_to_sheet(billsRes?.data?.data || []);
     XLSX.utils.book_append_sheet(wb, wsBills, "Bills");
 
-    const wsReturns = XLSX.utils.json_to_sheet(returnsRes.data);
+    const wsReturns = XLSX.utils.json_to_sheet(returnsRes?.data?.data || []);
     XLSX.utils.book_append_sheet(wb, wsReturns, "Returns");
 
     XLSX.writeFile(wb, "Anyaa_Textiles_Export.xlsx");
