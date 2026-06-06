@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { addBill, getCustomers, getProducts } from '../services/api';
+import { addBill, getCustomers, getProducts, updateProduct } from '../services/api';
 
 /* ─────────────────────────────── helpers ──────────────────────────────── */
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free'];
@@ -157,7 +157,7 @@ export function InvoiceView({ inv }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 14 }}>
         <thead>
           <tr style={{ background: '#8b3a6a', color: '#fff' }}>
-            {['#','Product','Category','Size','Qty','Rate (₹)','Discount (₹)','Total (₹)'].map((h, i) => (
+            {['#','Product','Category','Size','Qty','Rate (₹)','Total (₹)'].map((h, i) => (
               <th key={h} style={{ padding: '7px 10px', textAlign: i >= 4 ? 'right' : i === 2 || i === 3 ? 'center' : 'left' }}>{h}</th>
             ))}
           </tr>
@@ -171,14 +171,13 @@ export function InvoiceView({ inv }) {
               <td style={{ padding: '7px 10px', textAlign: 'center' }}>{item.size}</td>
               <td style={{ padding: '7px 10px', textAlign: 'right' }}>{item.qty}</td>
               <td style={{ padding: '7px 10px', textAlign: 'right' }}>{Number(item.rate).toLocaleString('en-IN')}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'right', color: '#c04070', fontWeight: 600 }}>{Number(item.discount_flat || 0).toLocaleString('en-IN')}</td>
               <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>
-                {(((Number(item.rate) || 0) - (Number(item.discount_flat) || 0)) * (Number(item.qty) || 0)).toLocaleString('en-IN')}
+                {(item.qty * Number(item.rate)).toLocaleString('en-IN')}
               </td>
             </tr>
           ))}
           {(!lineItems || lineItems.length === 0) && (
-            <tr><td colSpan={8} style={{ padding: '14px', textAlign: 'center', color: '#bbb' }}>No line items</td></tr>
+            <tr><td colSpan={7} style={{ padding: '14px', textAlign: 'center', color: '#bbb' }}>No line items</td></tr>
           )}
         </tbody>
       </table>
@@ -258,7 +257,6 @@ export default function Billing() {
   const [discountPercent, setDiscountPercent] = useState(draft.discountPercent || 0);
   const [taxRate,   setTaxRate]       = useState(draft.taxRate      || 5);
   const [showInvoice, setShowInvoice] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -295,7 +293,7 @@ export default function Billing() {
     }
   }, [custMode, selCustId, customers]);
 
-  const addBlankRow = () => setRows(p => [...p, { _uid: Date.now(), name: '', category: '', size: 'M', rate: '', qty: 1, discount_flat: 0 }]);
+  const addBlankRow = () => setRows(p => [...p, { _uid: Date.now(), name: '', category: '', size: 'M', rate: '', qty: 1 }]);
 
   const hasValidItem = rows.some(r => r.name && r.name.trim() !== '' && Number(r.qty) > 0);
   
@@ -338,8 +336,7 @@ export default function Billing() {
           _availableStock: stock,
           variants: Array.isArray(prod.variants) ? prod.variants : [],
           _variantId: null,
-          qty: Math.min(1, stock),
-          discount_flat: 0
+          qty: Math.min(1, stock)
         }
       : r
     ));
@@ -349,15 +346,14 @@ export default function Billing() {
   const removeRow = useCallback((uid) => setRows(p => p.filter(r => r._uid !== uid)), []);
 
   const subtotal = useMemo(() =>
-    Math.round(rows.reduce((s, r) => s + ((Number(r.rate) || 0) - (Number(r.discount_flat) || 0)) * (Number(r.qty) || 0), 0)),
+    Math.round(rows.reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0)),
   [rows]);
 
   const discountAmount = useMemo(() => {
     const flatDiscount = Number(discountFlat) || 0;
-    const lineSubtotal = Math.round(rows.reduce((s, r) => s + (Number(r.rate) || 0) * (Number(r.qty) || 0), 0));
-    const percentDiscount = Math.round(lineSubtotal * (Number(discountPercent) || 0) / 100);
+    const percentDiscount = Math.round(subtotal * (Number(discountPercent) || 0) / 100);
     return flatDiscount + percentDiscount;
-  }, [rows, discountFlat, discountPercent]);
+  }, [subtotal, discountFlat, discountPercent]);
 
   const afterDiscount = useMemo(() => Math.max(0, subtotal - discountAmount), [subtotal, discountAmount]);
   const taxAmount = useMemo(() => Math.round(afterDiscount * (Number(taxRate) || 0) / 100), [afterDiscount, taxRate]);
@@ -450,9 +446,11 @@ export default function Billing() {
       }))
     };
 
-    console.log('💾 Saving bill:', payload);
+    console.log('Saving bill with payload:', payload);
     const response = await addBill(payload);
-    console.log('✅ Bill saved successfully:', response);
+    console.log('Bill saved successfully:', response);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
     return response;
   };
 
@@ -467,13 +465,6 @@ export default function Billing() {
       return;
     }
 
-    // Show confirmation dialog
-    setShowConfirm(true);
-  };
-
-  const handleConfirmBill = async () => {
-    setShowConfirm(false);
-    
     if (saving) return;
 
     const nextInvoiceId = autoInv ? genInv() : invoiceId;
@@ -493,10 +484,6 @@ export default function Billing() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleCancelBill = () => {
-    setShowConfirm(false);
   };
 
   const handleWhatsApp = async () => {
@@ -521,24 +508,18 @@ export default function Billing() {
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
-      // COMPLETE FORM RESET
       setRows([]);
       setCustMode('walkin');
-      setCustName('Walk-in Customer');
       setCustPhone('');
       setInvoiceId(genInv());
-      setDiscountFlat(0);
-      setDiscountPercent(0);
       setErrors({});
-      // Reload products to show updated stock
       (async () => {
         try {
           const prods = await getProducts();
           setProducts(Array.isArray(prods) ? prods : []);
         } catch (e) { console.error('Failed to reload products', e); }
       })();
-      addBlankRow();
-    }, 1500);
+    }, 2000);
   };
 
   return (
@@ -840,7 +821,6 @@ export default function Billing() {
                   <th style={{ width: 80 }}>Size</th>
                   <th style={{ width: 60 }}>Qty</th>
                   <th style={{ width: 100 }}>Rate (₹)</th>
-                  <th style={{ width: 80 }}>Discount (₹)</th>
                   <th style={{ width: 90, textAlign: 'right' }}>Total</th>
                   <th style={{ width: 28 }}></th>
                 </tr>
@@ -848,7 +828,7 @@ export default function Billing() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '36px 0', color: '#ccc', fontSize: 13 }}>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '36px 0', color: '#ccc', fontSize: 13 }}>
                       Click "+ Add Row" to start billing
                     </td>
                   </tr>
@@ -929,16 +909,8 @@ export default function Billing() {
                             onChange={e => updateRow(row._uid, 'rate', e.target.value)}
                           />
                         </td>
-                        <td>
-                          <input
-                            type="number" min="0" className="tbl-input" placeholder="0"
-                            value={row.discount_flat || ''}
-                            onChange={e => updateRow(row._uid, 'discount_flat', Math.max(0, Number(e.target.value)))}
-                            style={{ textAlign: 'center' }}
-                          />
-                        </td>
                         <td className="row-total">
-                          ₹{(((Number(row.rate) || 0) - (Number(row.discount_flat) || 0)) * (Number(row.qty) || 0)).toLocaleString('en-IN')}
+                          ₹{((Number(row.rate) || 0) * (Number(row.qty) || 0)).toLocaleString('en-IN')}
                         </td>
                         <td>
                           <button className="rm-btn" onClick={() => removeRow(row._uid)}>×</button>
@@ -946,7 +918,7 @@ export default function Billing() {
                       </tr>
                       {hasError && (
                         <tr style={{ background: '#fff5f5' }}>
-                          <td colSpan={9}>
+                          <td colSpan={8}>
                             <span className="row-error-msg">{hasError}</span>
                           </td>
                         </tr>
@@ -1014,7 +986,7 @@ export default function Billing() {
               ))}
             </div>
             <div className="action-group">
-              <button className="btn-clear" onClick={() => { setRows([]); setDiscountFlat(0); setDiscountPercent(0); setErrors({}); addBlankRow(); }}>Clear</button>
+              <button className="btn-clear" onClick={() => { setRows([]); setDiscountFlat(0); setDiscountPercent(0); setErrors({}); }}>Clear</button>
               <button className="btn-generate" onClick={handleGenerate} disabled={!hasValidItem || saving}>
                 {saving ? 'Saving...' : '🧾 Generate Invoice'}
               </button>
@@ -1049,44 +1021,8 @@ export default function Billing() {
         </div>
       )}
 
-      {/* Confirmation Dialog */}
-      {showConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: '18px', padding: '32px', maxWidth: '450px', boxShadow: '0 24px 70px rgba(0,0,0,.3)', animation: 'slideUp .25s ease' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#8b3a6a', marginBottom: 12 }}>✅ Confirm Bill</div>
-            <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6, marginBottom: 24 }}>
-              Are you sure you want to create this bill? Stock will be deducted from inventory.
-            </div>
-            <div style={{ background: '#fdf6fa', borderRadius: '12px', padding: '12px', marginBottom: 20, fontSize: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#999' }}>Invoice:</span>
-                <span style={{ fontWeight: 700, color: '#4a1942' }}>{invoiceId}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ color: '#999' }}>Items:</span>
-                <span style={{ fontWeight: 700, color: '#4a1942' }}>{totalQty}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#999' }}>Total:</span>
-                <span style={{ fontWeight: 700, color: '#4a1942' }}>₹{grandTotal.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={handleCancelBill} style={{ flex: 1, padding: '12px 16px', borderRadius: '12px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: '#f0e0ec', color: '#8b3a6a', transition: '.15s' }}>
-                ❌ Cancel
-              </button>
-              <button onClick={handleConfirmBill} style={{ flex: 1, padding: '12px 16px', borderRadius: '12px', fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #8b3a6a, #c07a9c)', color: '#fff', transition: '.15s', boxShadow: '0 4px 12px rgba(139,58,106,.3)' }}>
-                ✅ Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showSuccess && (
-        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: '#fff', border: '1px solid #b4e4c4', borderRadius: '16px', padding: '13px 28px', boxShadow: '0 8px 32px rgba(0,0,0,.14)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600, color: '#1a7a3a' }}>
-          ✅ Invoice created successfully!
-        </div>
+        <div className="toast">✅ Invoice saved successfully!</div>
       )}
     </>
   );

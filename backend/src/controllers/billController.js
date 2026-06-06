@@ -88,7 +88,7 @@ const getBill = async (req, res) => {
   }
 };
 
-// Create bill with transaction
+// Create bill with transaction and stock validation
 const createBill = async (req, res) => {
   try {
     const { 
@@ -96,6 +96,14 @@ const createBill = async (req, res) => {
       subtotal, tax_amount, discount_flat, discount_percent, total,
       payment_method, payment_status, lineItems 
     } = req.body;
+
+    // Validate required fields
+    if (!bill_number || !customer_name || !Array.isArray(lineItems) || lineItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: bill_number, customer_name, or lineItems'
+      });
+    }
 
     // Check if bill_number already exists
     const existingBill = await db.get('SELECT id FROM bills WHERE bill_number = ?', [bill_number]);
@@ -106,6 +114,51 @@ const createBill = async (req, res) => {
       });
     }
 
+    // ─── CRITICAL: Validate all line items have sufficient stock before transaction ───
+    const stockValidationErrors = [];
+    
+    for (const item of lineItems) {
+      if (!item.product_id) {
+        continue; // Skip items without product_id (might be custom items)
+      }
+
+      if (!item.quantity || item.quantity <= 0) {
+        stockValidationErrors.push(`Product ID ${item.product_id}: Quantity must be greater than 0`);
+        continue;
+      }
+
+      // Fetch current product stock
+      const product = await db.get('SELECT id, name, stock FROM products WHERE id = ?', [item.product_id]);
+      
+      if (!product) {
+        stockValidationErrors.push(`Product ID ${item.product_id}: Product not found`);
+        continue;
+      }
+
+      const currentStock = Number(product.stock || 0);
+      const requestedQty = Number(item.quantity);
+
+      if (currentStock <= 0) {
+        stockValidationErrors.push(`${product.name}: Out of stock (0 available)`);
+        continue;
+      }
+
+      if (requestedQty > currentStock) {
+        stockValidationErrors.push(`${product.name}: Only ${currentStock} available, but ${requestedQty} requested`);
+        continue;
+      }
+    }
+
+    // If any stock validation errors, reject the entire bill
+    if (stockValidationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stock validation failed. Bill cannot be created.',
+        errors: stockValidationErrors
+      });
+    }
+
+    // ─── Stock validation passed, proceed with transaction ───
     const billId = await db.transaction(async () => {
       // Insert bill
       const billResult = await db.run(
@@ -131,7 +184,7 @@ const createBill = async (req, res) => {
 
       const newBillId = billResult.lastInsertRowid;
 
-      // Insert bill items
+      // Insert bill items and update stock
       for (const item of lineItems) {
         await db.run(
           `INSERT INTO bill_items (bill_id, product_id, product_name, category, size, quantity, unit_price, line_total)
@@ -148,10 +201,13 @@ const createBill = async (req, res) => {
           ]
         );
 
-        // Update product stock
+        // Update product master stock
         if (item.product_id) {
           await db.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.product_id]);
         }
+
+        // TODO: If variant-level tracking is needed, update product_variants.stock_quantity here
+        // For now, we're tracking at the product master level only
       }
 
       // Update customer total purchases if customer exists
@@ -164,6 +220,8 @@ const createBill = async (req, res) => {
 
     const newBill = await db.get('SELECT * FROM bills WHERE id = ?', [billId]);
     const items = await db.all('SELECT * FROM bill_items WHERE bill_id = ?', [billId]);
+
+    console.log(`✅ Bill ${bill_number} created successfully with ${lineItems.length} items`);
 
     res.status(201).json({
       success: true,
